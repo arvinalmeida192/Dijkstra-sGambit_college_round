@@ -21,6 +21,7 @@ import {
   type Milestone,
   type MilestoneInput,
 } from '../lib/api/milestones'
+import { listAgreements } from '../lib/api/agreements'
 import { getProject, type Project } from '../lib/api/projects'
 import {
   createSubmission,
@@ -82,6 +83,7 @@ export function ProgressPage() {
   const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string | null>(null)
   const [transitionLoading, setTransitionLoading] = useState(false)
+  const [hasAgreement, setHasAgreement] = useState(false)
 
   const load = useCallback(async () => {
     if (!token || !projectId || !isApiConfigured()) {
@@ -91,13 +93,23 @@ export function ProgressPage() {
     setLoading(true)
     setError(null)
     try {
-      const [projectResult, milestonesResult] = await Promise.all([
-        getProject(token, projectId),
-        listMilestones(token, projectId),
-      ])
+      const [projectResult, milestonesResult, agreementsResult] =
+        await Promise.all([
+          getProject(token, projectId),
+          listMilestones(token, projectId),
+          listAgreements(token, projectId).catch(() => null),
+        ])
       const list = milestonesResult.milestones
       setProject(projectResult.project)
       setMilestones(list)
+      setHasAgreement(
+        Boolean(
+          agreementsResult?.activeAgreementId ||
+            agreementsResult?.proposedAgreementId ||
+            (agreementsResult?.agreements &&
+              agreementsResult.agreements.length > 0),
+        ),
+      )
 
       const submissionResults = await Promise.all(
         list.map(async (milestone) => {
@@ -133,7 +145,7 @@ export function ProgressPage() {
   const isFreelancer = actorRole === 'FREELANCER'
   const projectClosed =
     project?.status === 'CANCELLED' || project?.status === 'COMPLETED'
-  const canCreate = isClient && !projectClosed
+  const canCreate = isClient && !projectClosed && !hasAgreement
 
   async function onCreate(input: MilestoneInput) {
     if (!token || !projectId) return
@@ -380,6 +392,20 @@ export function ProgressPage() {
             <Alert tone="warning">
               This project is {project.status.toLowerCase()}. Milestone creation
               and most workflow actions are blocked.
+            </Alert>
+          ) : null}
+
+          {hasAgreement && projectId ? (
+            <Alert tone="info">
+              Milestones for this project are governed by the project agreement.
+              To add or adjust milestone schedules, visit the{' '}
+              <Link
+                to={routes.agreement(projectId)}
+                className="font-bold underline text-dark hover:text-accent"
+              >
+                Agreements page
+              </Link>
+              .
             </Alert>
           ) : null}
 

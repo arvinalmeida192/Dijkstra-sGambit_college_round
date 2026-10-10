@@ -132,7 +132,8 @@ export function MilestoneCard({
     return true
   })
 
-  const canManagePending = isClient && milestone.status === 'PENDING'
+  const canManagePending =
+    isClient && milestone.status === 'PENDING' && !milestone.agreementId
   const dueLabel = formatDateOnly(milestone.dueDate)
   const overdue =
     Boolean(milestone.dueDate) &&
@@ -190,10 +191,20 @@ export function MilestoneCard({
               Delete
             </Button>
           </div>
+        ) : isClient && milestone.agreementId ? (
+          <span className="font-mono text-[11px] text-dark/50 border border-dark/15 px-2 py-1">
+            Governed by agreement
+          </span>
         ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
+        {milestone.description &&
+        milestone.description !== milestone.deliverables ? (
+          <div className="sm:col-span-2">
+            <Field label="Description" value={milestone.description} />
+          </div>
+        ) : null}
         <Field label="Deliverables" value={milestone.deliverables} />
         <Field
           label="Acceptance criteria"

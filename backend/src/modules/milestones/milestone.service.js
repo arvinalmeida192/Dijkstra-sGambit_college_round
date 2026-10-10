@@ -5,7 +5,11 @@ import {
 } from '../../utils/errors.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
-import { findAgreementById } from '../agreements/agreement.repository.js'
+import {
+  findActiveAgreement,
+  findAgreementById,
+  findProposedAgreement,
+} from '../agreements/agreement.repository.js'
 import {
   applyStatusPatch,
   deleteMilestone,
@@ -72,6 +76,20 @@ export async function createMilestone(user, projectId, input) {
     )
   }
 
+  const activeAgreement = await findActiveAgreement(projectId)
+  if (activeAgreement) {
+    throw conflict(
+      'Cannot create milestones directly on a project with an active agreement. Propose an agreement change to modify milestones.',
+    )
+  }
+
+  const proposedAgreement = await findProposedAgreement(projectId)
+  if (proposedAgreement) {
+    throw conflict(
+      'Cannot create milestones directly while an agreement proposal is pending. Propose an agreement change to modify milestones.',
+    )
+  }
+
   let agreementId = input.agreementId ?? null
   if (agreementId) {
     const agreement = await findAgreementById(agreementId)
@@ -84,6 +102,7 @@ export async function createMilestone(user, projectId, input) {
     projectId,
     agreementId,
     title: input.title,
+    description: input.description ?? input.deliverables ?? '',
     deliverables: input.deliverables,
     acceptanceCriteria: input.acceptanceCriteria,
     amount: input.amount,
@@ -103,6 +122,19 @@ export async function updateMilestone(user, milestoneId, input) {
   const project = await loadProjectForMilestone(milestone)
   assertClientOwner(project, user)
 
+  if (milestone.agreement_id) {
+    throw conflict(
+      'Cannot directly edit milestones defined by an agreement. Propose an agreement change to revise terms.',
+    )
+  }
+
+  const activeAgreement = await findActiveAgreement(project.id)
+  if (activeAgreement) {
+    throw conflict(
+      'Cannot edit milestones directly on a project with an active agreement. Propose an agreement change to revise terms.',
+    )
+  }
+
   if (milestone.status !== 'PENDING') {
     throw conflict(
       'Only PENDING milestones can be edited. Propose agreement/milestone changes for active work.',
@@ -117,6 +149,7 @@ export async function updateMilestone(user, milestoneId, input) {
 
   const row = await updateMilestoneFields(milestoneId, {
     ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.deliverables !== undefined
       ? { deliverables: input.deliverables }
       : {}),
@@ -142,6 +175,19 @@ export async function removeMilestone(user, milestoneId) {
 
   const project = await loadProjectForMilestone(milestone)
   assertClientOwner(project, user)
+
+  if (milestone.agreement_id) {
+    throw conflict(
+      'Cannot directly delete milestones defined by an agreement. Propose an agreement change to revise terms.',
+    )
+  }
+
+  const activeAgreement = await findActiveAgreement(project.id)
+  if (activeAgreement) {
+    throw conflict(
+      'Cannot delete milestones directly on a project with an active agreement. Propose an agreement change to revise terms.',
+    )
+  }
 
   if (milestone.status !== 'PENDING') {
     throw conflict('Only PENDING milestones can be deleted.')

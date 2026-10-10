@@ -3,6 +3,7 @@ import {
   forbidden,
   notFound,
 } from '../../utils/errors.js'
+import { insertMilestone } from '../milestones/milestone.repository.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
 import {
@@ -102,12 +103,51 @@ export async function createAgreement(user, projectId, input) {
     )
   }
 
-  const row = await insertAgreement({
-    projectId,
-    version: 1,
-    terms: input.terms,
-    createdBy: user.id,
-    status: 'PROPOSED',
+  const row = await withTransaction(async (client) => {
+    await client.query(
+      `DELETE FROM milestones WHERE project_id = $1 AND agreement_id IS NULL AND status = 'PENDING'`,
+      [projectId],
+    )
+
+    const agreement = await insertAgreement(
+      {
+        projectId,
+        version: 1,
+        terms: input.terms,
+        createdBy: user.id,
+        status: 'PROPOSED',
+      },
+      client,
+    )
+
+    if (Array.isArray(input.terms?.milestones)) {
+      for (let i = 0; i < input.terms.milestones.length; i++) {
+        const m = input.terms.milestones[i]
+        await insertMilestone(
+          {
+            projectId,
+            agreementId: agreement.id,
+            title: m.title,
+            description: m.description ?? m.deliverables ?? '',
+            deliverables: m.deliverables ?? m.description ?? '',
+            acceptanceCriteria:
+              m.acceptanceCriteria ??
+              m.description ??
+              m.deliverables ??
+              'Deliverable accepted',
+            amount: m.amount,
+            dueDate: m.dueDate ?? null,
+            reviewWindowDays: m.reviewWindowDays ?? null,
+            sortOrder: i,
+            createdBy: user.id,
+            status: 'PENDING',
+          },
+          client,
+        )
+      }
+    }
+
+    return agreement
   })
 
   return loadAgreementPublic(row)
@@ -199,14 +239,20 @@ export async function acceptAgreement(user, agreementId, input = {}) {
          LIMIT 1`,
         [project.id],
       )
+      const previousActiveId = activeRows[0]?.id ?? null
       const activated = await activateAgreement(
         agreement.id,
-        activeRows[0]?.id ?? null,
+        previousActiveId,
         client,
       )
       if (!activated) {
         throw conflict('Agreement could not be activated.')
       }
+
+      if (previousActiveId && Array.isArray(agreement.terms?.milestones)) {
+        await syncAgreementMilestones(project.id, agreement, client)
+      }
+
       return activated
     })
     acceptances = await listAcceptances(current.id)
@@ -214,3 +260,86 @@ export async function acceptAgreement(user, agreementId, input = {}) {
 
   return toPublicAgreement(current, acceptances)
 }
+
+async function syncAgreementMilestones(projectId, agreement, client) {
+  const { rows: existing } = await client.query(
+    `SELECT * FROM milestones WHERE project_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    [projectId],
+  )
+  const termsMilestones = agreement.terms?.milestones ?? []
+
+  for (let i = 0; i < termsMilestones.length; i++) {
+    const m = termsMilestones[i]
+    if (existing[i]) {
+      if (existing[i].status === 'PENDING') {
+        await client.query(
+          `UPDATE milestones
+           SET agreement_id = $1,
+               title = $2,
+               description = $3,
+               deliverables = $4,
+               acceptance_criteria = $5,
+               amount = $6,
+               due_date = $7,
+               review_window_days = $8,
+               sort_order = $9,
+               updated_at = NOW()
+           WHERE id = $10`,
+          [
+            agreement.id,
+            m.title,
+            m.description ?? m.deliverables ?? '',
+            m.deliverables ?? m.description ?? '',
+            m.acceptanceCriteria ??
+              m.description ??
+              m.deliverables ??
+              'Deliverable accepted',
+            m.amount,
+            m.dueDate ?? null,
+            m.reviewWindowDays ?? null,
+            i,
+            existing[i].id,
+          ],
+        )
+      } else {
+        await client.query(
+          `UPDATE milestones SET agreement_id = $1, updated_at = NOW() WHERE id = $2`,
+          [agreement.id, existing[i].id],
+        )
+      }
+    } else {
+      await insertMilestone(
+        {
+          projectId,
+          agreementId: agreement.id,
+          title: m.title,
+          description: m.description ?? m.deliverables ?? '',
+          deliverables: m.deliverables ?? m.description ?? '',
+          acceptanceCriteria:
+            m.acceptanceCriteria ??
+            m.description ??
+            m.deliverables ??
+            'Deliverable accepted',
+          amount: m.amount,
+          dueDate: m.dueDate ?? null,
+          reviewWindowDays: m.reviewWindowDays ?? null,
+          sortOrder: i,
+          createdBy: agreement.created_by,
+          status: 'PENDING',
+        },
+        client,
+      )
+    }
+  }
+
+  if (existing.length > termsMilestones.length) {
+    for (let i = termsMilestones.length; i < existing.length; i++) {
+      if (existing[i].status === 'PENDING') {
+        await client.query(`DELETE FROM milestones WHERE id = $1`, [
+          existing[i].id,
+        ])
+      }
+    }
+  }
+}
+
