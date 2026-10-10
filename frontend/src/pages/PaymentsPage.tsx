@@ -14,7 +14,12 @@ import { Select } from '../components/ui/Select'
 import { Modal } from '../components/ui/Modal'
 import { formatAmountBaseUnits } from '../lib/agreementStatus'
 import { ApiError, isApiConfigured } from '../lib/api/client'
-import { listMilestones, type Milestone } from '../lib/api/milestones'
+import {
+  listMilestones,
+  listProjectAuditLogs,
+  type AuditLog,
+  type Milestone,
+} from '../lib/api/milestones'
 import {
   listProjectPayments,
   reportMilestonePayment,
@@ -94,6 +99,7 @@ export function PaymentsPage() {
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [fundingStatus, setFundingStatus] = useState<FundingStatusResponse | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -142,11 +148,18 @@ export function PaymentsPage() {
           listMilestones(token, projectId),
           getFundingStatus(token, projectId).catch(() => null),
           listProjectPayments(token, projectId).catch(() => ({ payments: [] })),
+      const [projectResult, milestonesResult, paymentsResult, auditResult] =
+        await Promise.all([
+          getProject(token, projectId),
+          listMilestones(token, projectId),
+          listProjectPayments(token, projectId),
+          listProjectAuditLogs(token, projectId),
         ])
       setProject(projectResult.project)
       setMilestones(milestonesResult.milestones)
       setFundingStatus(fundingResult)
       setPayments(paymentsResult.payments)
+      setAuditLogs(auditResult.auditLogs)
       setMilestoneId((current) =>
         current || milestonesResult.milestones[0]?.id || '',
       )
@@ -155,6 +168,7 @@ export function PaymentsPage() {
       setMilestones([])
       setFundingStatus(null)
       setPayments([])
+      setAuditLogs([])
       setError(
         err instanceof ApiError
           ? err.message
@@ -767,6 +781,51 @@ export function PaymentsPage() {
               </div>
             )}
           </div>
+              ))}
+            </div>
+          )}
+
+          <Panel className="space-y-3">
+            <h2 className="font-display text-lg text-dark">
+              Protection activity
+            </h2>
+            <p className="font-body text-sm text-dark/70">
+              Auditable protection events (extensions, overdue, auto-approval,
+              reclaim, releases). Actor may be a participant or system.
+            </p>
+            {auditLogs.length === 0 ? (
+              <p className="font-mono text-[11px] text-dark/50">
+                No protection audit entries yet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {auditLogs.map((log) => (
+                  <li
+                    key={log.id}
+                    className="border-2 border-dark/10 bg-white/60 p-3 space-y-1"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="neutral">{log.action}</Badge>
+                      <span className="font-mono text-[10px] text-dark/50">
+                        {formatDate(log.createdAt)}
+                      </span>
+                    </div>
+                    <p className="font-mono text-[11px] text-dark/70">
+                      Actor: {log.actor}
+                      {log.milestoneId
+                        ? ` · milestone ${log.milestoneId.slice(0, 8)}`
+                        : ''}
+                    </p>
+                    {log.metadata && Object.keys(log.metadata).length > 0 ? (
+                      <p className="font-mono text-[10px] text-dark/45 break-all">
+                        {JSON.stringify(log.metadata)}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
         </>
       )}
 

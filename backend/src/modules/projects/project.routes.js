@@ -2,7 +2,10 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/authenticate.js'
 import { requireRoles } from '../../middleware/authorize.js'
 import { projectAgreementsRouter } from '../agreements/agreement.routes.js'
-import { projectMilestonesRouter } from '../milestones/milestone.routes.js'
+import {
+  projectMilestonesRouter,
+} from '../milestones/milestone.routes.js'
+import * as milestoneController from '../milestones/milestone.controller.js'
 import { projectPaymentsRouter } from '../payments/payment.routes.js'
 import { projectDisputesRouter } from '../disputes/dispute.routes.js'
 import { projectFundingRouter } from '../funding/funding.routes.js'
@@ -48,6 +51,7 @@ projectsRouter.use('/:id/milestones', projectMilestonesRouter)
 projectsRouter.use('/:id/payments', projectPaymentsRouter)
 projectsRouter.use('/:id/disputes', projectDisputesRouter)
 projectsRouter.use('/:id/funding', projectFundingRouter)
+projectsRouter.get('/:id/audit-logs', milestoneController.listAuditLogsForProject)
 
 invitationsRouter.get('/:token', projectController.previewInvitation)
 invitationsRouter.post(

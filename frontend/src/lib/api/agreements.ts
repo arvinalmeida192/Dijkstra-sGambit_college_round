@@ -15,6 +15,8 @@ export type AgreementMilestoneTerms = {
   amount: number
   dueDate?: string
   reviewWindowDays?: number
+  gracePeriodDays?: number
+  maxRevisions?: number
 }
 
 export type AgreementTerms = {

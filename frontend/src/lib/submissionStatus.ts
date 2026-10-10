@@ -24,7 +24,11 @@ export function getReviewDecisionTone(decision: ReviewDecision): BadgeTone {
 
 /** Milestone statuses where the freelancer may create a submission. */
 export function canSubmitDeliverable(status: MilestoneStatus): boolean {
-  return status === 'IN_PROGRESS' || status === 'REVISION_REQUESTED'
+  return (
+    status === 'IN_PROGRESS' ||
+    status === 'REVISION_REQUESTED' ||
+    status === 'OVERDUE'
+  )
 }
 
 /** Milestone statuses where the client may review the latest submission. */

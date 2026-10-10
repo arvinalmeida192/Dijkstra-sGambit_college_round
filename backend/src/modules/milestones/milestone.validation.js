@@ -32,7 +32,21 @@ export const createMilestoneSchema = z.object({
     .positive()
     .max(365)
     .optional()
-    .nullable(),
+    .default(7),
+  gracePeriodDays: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(365)
+    .optional()
+    .default(3),
+  maxRevisions: z
+    .number()
+    .int()
+    .positive()
+    .max(20)
+    .optional()
+    .default(3),
   agreementId: z.string().uuid().optional().nullable(),
   sortOrder: z.number().int().nonnegative().optional(),
 })
@@ -67,6 +81,20 @@ export const updateMilestoneSchema = z
       .max(365)
       .optional()
       .nullable(),
+    gracePeriodDays: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(365)
+      .optional()
+      .nullable(),
+    maxRevisions: z
+      .number()
+      .int()
+      .positive()
+      .max(20)
+      .optional()
+      .nullable(),
     sortOrder: z.number().int().nonnegative().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -81,6 +109,24 @@ export const updateStatusSchema = z.object({
     .max(2000)
     .optional()
     .transform((value) => (value === '' ? undefined : value)),
+})
+
+export const proposeExtensionSchema = z.object({
+  newDueDate: dateOnly,
+  reason: z
+    .string()
+    .trim()
+    .min(1, 'Reason for extension is required.')
+    .max(2000),
+})
+
+export const respondExtensionSchema = z.object({
+  decision: z.enum(['ACCEPT', 'REJECT']),
+  responseNote: z.string().trim().max(2000).optional().nullable(),
+})
+
+export const cancelAndReclaimSchema = z.object({
+  reason: z.string().trim().max(2000).optional().nullable(),
 })
 
 export function parseBody(schema, body) {

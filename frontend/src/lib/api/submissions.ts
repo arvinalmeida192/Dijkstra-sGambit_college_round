@@ -13,6 +13,7 @@ export type SubmissionReview = {
   reviewerId: string
   decision: ReviewDecision
   feedback: string | null
+  unmetCriteria?: string[]
   createdAt: string
 }
 
@@ -109,7 +110,11 @@ export function createSubmission(
 export function reviewSubmission(
   token: string,
   submissionId: string,
-  input: { decision: ReviewDecision; feedback?: string | null },
+  input: {
+    decision: ReviewDecision
+    feedback?: string | null
+    unmetCriteria?: string[]
+  },
 ) {
   return apiRequest<{
     review: SubmissionReview
@@ -121,6 +126,7 @@ export function reviewSubmission(
     body: {
       decision: input.decision,
       feedback: input.feedback?.trim() || null,
+      unmetCriteria: input.unmetCriteria ?? [],
     },
   })
 }

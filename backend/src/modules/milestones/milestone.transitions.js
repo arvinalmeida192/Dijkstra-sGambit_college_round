@@ -11,6 +11,7 @@ export const MILESTONE_STATUSES = [
   'REVISION_REQUESTED',
   'APPROVED',
   'DISPUTED',
+  'OVERDUE',
   'CANCELLED',
 ]
 
@@ -18,10 +19,10 @@ export const MILESTONE_STATUSES = [
  * Allowed transitions and which project-relative actor roles may perform them.
  *
  * Actor roles here are relationship roles on the project:
- *   CLIENT | FREELANCER | ARBITRATOR
+ *   CLIENT | FREELANCER | ARBITRATOR | SYSTEM
  *
  * Happy path: PENDING → IN_PROGRESS → SUBMITTED → IN_REVIEW → APPROVED
- * Branches: REVISION_REQUESTED, DISPUTED, CANCELLED
+ * Branches: REVISION_REQUESTED, DISPUTED, OVERDUE, CANCELLED
  *
  * Critical rule: FREELANCER may never transition to APPROVED
  * (cannot approve their own submission).
@@ -29,17 +30,26 @@ export const MILESTONE_STATUSES = [
 const TRANSITIONS = {
   PENDING: {
     IN_PROGRESS: ['CLIENT', 'FREELANCER'],
+    CANCELLED: ['CLIENT'],
   },
   IN_PROGRESS: {
     SUBMITTED: ['FREELANCER'],
     DISPUTED: ['CLIENT', 'FREELANCER'],
+    OVERDUE: ['CLIENT', 'SYSTEM'],
+  },
+  OVERDUE: {
+    SUBMITTED: ['FREELANCER'],
+    IN_PROGRESS: ['CLIENT', 'FREELANCER'],
+    CANCELLED: ['CLIENT', 'SYSTEM'],
+    DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   SUBMITTED: {
     IN_REVIEW: ['CLIENT'],
+    APPROVED: ['CLIENT', 'SYSTEM'],
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   IN_REVIEW: {
-    APPROVED: ['CLIENT'],
+    APPROVED: ['CLIENT', 'SYSTEM'],
     REVISION_REQUESTED: ['CLIENT'],
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
@@ -49,10 +59,10 @@ const TRANSITIONS = {
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   APPROVED: {
-    // Terminal for Phase 12 (payment release is later).
+    // Terminal milestone state.
   },
   CANCELLED: {
-    // Terminal when affected work is ended.
+    // Terminal when work is cancelled / reclaimed.
   },
   DISPUTED: {
     // Resolution paths for arbitrators and dispute resolution workflow.
@@ -75,6 +85,8 @@ export function listAllowedTransitions(fromStatus) {
  * Arbitrator global role wins even if they are not a participant.
  */
 export function resolveActorRole(project, user) {
+  if (!user) return null
+  if (user.role === 'SYSTEM') return 'SYSTEM'
   if (user.role === 'ARBITRATOR') return 'ARBITRATOR'
   if (project.client_id === user.id) return 'CLIENT'
   if (project.freelancer_id && project.freelancer_id === user.id) {
@@ -173,17 +185,29 @@ export function transitionSideEffects(toStatus, milestone, now = new Date()) {
 
   if (toStatus === 'SUBMITTED') {
     patch.submittedAt = now
-  }
-
-  if (toStatus === 'IN_REVIEW') {
-    patch.reviewStartedAt = now
+    // Review countdown starts at submission so auto-approval cannot be delayed
+    // by an unresponsive client who never clicks "Start review".
     const days = milestone.review_window_days ?? milestone.reviewWindowDays
     if (days != null && days >= 1) {
       const due = new Date(now)
       due.setUTCDate(due.getUTCDate() + days)
       patch.reviewDueAt = due
-    } else {
-      patch.reviewDueAt = null
+    }
+  }
+
+  if (toStatus === 'IN_REVIEW') {
+    patch.reviewStartedAt = now
+    // Keep an existing reviewDueAt from SUBMITTED; only set if missing.
+    const existingDue = milestone.review_due_at ?? milestone.reviewDueAt
+    if (!existingDue) {
+      const days = milestone.review_window_days ?? milestone.reviewWindowDays
+      if (days != null && days >= 1) {
+        const due = new Date(now)
+        due.setUTCDate(due.getUTCDate() + days)
+        patch.reviewDueAt = due
+      } else {
+        patch.reviewDueAt = null
+      }
     }
   }
 
