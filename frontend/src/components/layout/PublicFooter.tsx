@@ -14,6 +14,8 @@ type PublicFooterProps = {
   className?: string
 }
 
+const currentYear = new Date().getFullYear()
+
 export function PublicFooter({
   columns = [],
   children,
@@ -52,7 +54,7 @@ export function PublicFooter({
           {children ? <div className="md:col-span-2">{children}</div> : null}
         </div>
         <div className="pt-8 font-mono text-xs text-white/50">
-          © {new Date().getFullYear()} Fairwork. Hackathon demo — testnet / local
+          © {currentYear} Fairwork. Hackathon demo — testnet / local
           chain only.
         </div>
       </PageContainer>
