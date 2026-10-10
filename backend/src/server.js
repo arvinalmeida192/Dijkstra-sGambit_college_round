@@ -11,6 +11,7 @@ async function main() {
     console.log(`Fairwork API listening on http://localhost:${env.port}`)
     console.log(`Health: GET /health`)
     console.log(`Auth:   POST /api/v1/auth/register | /login | GET /me`)
+    console.log(`Projects: /api/v1/projects | /api/v1/invitations/:token`)
   })
 }
 
