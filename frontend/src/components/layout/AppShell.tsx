@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
-import { Alert } from '../ui/Alert'
+import { useAuth } from '../../auth/AuthContext'
 import { BrandMark } from '../ui/BrandMark'
+import { Button } from '../ui/Button'
 import { IconButton } from '../ui/IconButton'
 import { PageContainer } from '../ui/PageContainer'
 import { routes } from '../../lib/routes'
@@ -32,8 +33,15 @@ function projectIdFromPath(pathname: string): string | null {
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
   const projectId = projectIdFromPath(pathname)
   const showProjectNav = Boolean(projectId)
+
+  function onLogout() {
+    logout()
+    navigate(routes.login, { replace: true })
+  }
 
   const projectNav = showProjectNav && projectId
     ? [
@@ -65,19 +73,17 @@ export function AppShell() {
             </nav>
           </div>
 
-          <div className="hidden md:flex items-center gap-2">
-            <Link
-              to={routes.login}
-              className="font-mono text-xs font-bold uppercase tracking-wider px-3 py-2 border-2 border-dark hover:bg-dark hover:text-white transition-colors"
-            >
-              Login
-            </Link>
-            <Link
-              to={routes.register}
-              className="font-mono text-xs font-bold uppercase tracking-wider px-3 py-2 bg-accent text-white border-2 border-dark shadow-[var(--shadow-brutal)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all"
-            >
-              Register
-            </Link>
+          <div className="hidden md:flex items-center gap-3">
+            {user ? (
+              <>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-dark/70 max-w-[12rem] truncate">
+                  {user.name} · {user.role}
+                </span>
+                <Button variant="secondary" size="sm" onClick={onLogout}>
+                  Sign out
+                </Button>
+              </>
+            ) : null}
           </div>
 
           <IconButton
@@ -102,20 +108,18 @@ export function AppShell() {
                   {item.label}
                 </NavLink>
               ))}
-              <NavLink
-                to={routes.login}
-                className={navClassName}
-                onClick={() => setMobileOpen(false)}
-              >
-                Login
-              </NavLink>
-              <NavLink
-                to={routes.register}
-                className={navClassName}
-                onClick={() => setMobileOpen(false)}
-              >
-                Register
-              </NavLink>
+              {user ? (
+                <button
+                  type="button"
+                  className={navClassName({ isActive: false })}
+                  onClick={() => {
+                    setMobileOpen(false)
+                    onLogout()
+                  }}
+                >
+                  Sign out
+                </button>
+              ) : null}
             </PageContainer>
           </div>
         ) : null}
@@ -141,14 +145,7 @@ export function AppShell() {
         ) : null}
       </header>
 
-      <PageContainer variant="app" className="py-4">
-        <Alert tone="warning">
-          Routes are navigable placeholders. Authentication is not enforced yet
-          (Phases 06–07). Do not treat this shell as secure access control.
-        </Alert>
-      </PageContainer>
-
-      <main className="flex-1 pb-12">
+      <main className="flex-1 pb-12 pt-6">
         <Outlet />
       </main>
     </div>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { BrandMark } from '../ui/BrandMark'
 import { PageContainer } from '../ui/PageContainer'
 import { cn } from '../../lib/cn'
@@ -12,6 +13,22 @@ type PublicFooterProps = {
   columns?: FooterColumn[]
   children?: ReactNode
   className?: string
+}
+
+function FooterLink({ href, label }: { href: string; label: string }) {
+  const className = 'hover:text-accent transition-colors'
+  if (href.startsWith('/')) {
+    return (
+      <Link to={href} className={className}>
+        {label}
+      </Link>
+    )
+  }
+  return (
+    <a href={href} className={className}>
+      {label}
+    </a>
+  )
 }
 
 const currentYear = new Date().getFullYear()
@@ -43,10 +60,8 @@ export function PublicFooter({
                 {col.title}
               </div>
               {col.links.map((link) => (
-                <div key={link.href}>
-                  <a href={link.href} className="hover:text-accent transition-colors">
-                    {link.label}
-                  </a>
+                <div key={`${col.title}-${link.href}`}>
+                  <FooterLink href={link.href} label={link.label} />
                 </div>
               ))}
             </div>

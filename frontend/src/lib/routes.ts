@@ -2,6 +2,7 @@ export const routes = {
   home: '/',
   login: '/login',
   register: '/register',
+  invite: (token: string) => `/invite/${encodeURIComponent(token)}`,
   dashboard: '/dashboard',
   projects: '/projects',
   projectNew: '/projects/new',
