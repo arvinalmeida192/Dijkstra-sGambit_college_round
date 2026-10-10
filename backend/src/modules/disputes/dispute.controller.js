@@ -1,11 +1,13 @@
 import { asyncHandler } from '../../utils/asyncHandler.js'
 import * as disputeService from './dispute.service.js'
 import {
+  arbitratorResolveSchema,
   assertUuid,
   decisionSchema,
   evidenceSchema,
   openDisputeSchema,
   parseBody,
+  proposeResolutionSchema,
 } from './dispute.validation.js'
 
 function parseMaybeJsonBody(body) {
@@ -61,6 +63,37 @@ export const decide = asyncHandler(async (req, res) => {
   const disputeId = assertUuid(req.params.id, 'dispute id')
   const body = parseBody(decisionSchema, parseMaybeJsonBody(req.body))
   const result = await disputeService.decideDispute(req.user, disputeId, body)
+  res.json(result)
+})
+
+export const proposeResolution = asyncHandler(async (req, res) => {
+  const disputeId = assertUuid(req.params.id, 'dispute id')
+  const body = parseBody(proposeResolutionSchema, parseMaybeJsonBody(req.body))
+  const result = await disputeService.proposeResolution(
+    req.user,
+    disputeId,
+    body,
+  )
+  res.json(result)
+})
+
+export const acceptResolution = asyncHandler(async (req, res) => {
+  const disputeId = assertUuid(req.params.id, 'dispute id')
+  const result = await disputeService.acceptResolution(req.user, disputeId)
+  res.json(result)
+})
+
+export const resolve = asyncHandler(async (req, res) => {
+  const disputeId = assertUuid(req.params.id, 'dispute id')
+  const body = parseBody(
+    arbitratorResolveSchema,
+    parseMaybeJsonBody(req.body),
+  )
+  const result = await disputeService.resolveDisputeByArbitrator(
+    req.user,
+    disputeId,
+    body,
+  )
   res.json(result)
 })
 

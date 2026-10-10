@@ -60,6 +60,43 @@ export const decisionSchema = z
     }
   })
 
+export const RESOLUTION_OUTCOMES = [
+  'RESUME_EXISTING',
+  'RESUME_WITH_CHANGES',
+  'TERMINATE_WORK',
+]
+
+export const proposeResolutionSchema = z
+  .object({
+    outcome: z.enum([
+      'RESUME_EXISTING',
+      'RESUME_WITH_CHANGES',
+      'TERMINATE_WORK',
+    ]),
+    summary: z
+      .string()
+      .trim()
+      .min(3, 'Resolution summary must be at least 3 characters.')
+      .max(5000),
+  })
+  .strict()
+
+export const arbitratorResolveSchema = z
+  .object({
+    outcome: z.enum([
+      'RESUME_EXISTING',
+      'RESUME_WITH_CHANGES',
+      'TERMINATE_WORK',
+    ]),
+    summary: z
+      .string()
+      .trim()
+      .min(1, 'Resolution summary is required.')
+      .max(5000),
+    resolvePaymentId: uuid.optional().nullable(),
+  })
+  .strict()
+
 export function assertUuid(value, label = 'id') {
   const parsed = uuid.safeParse(value)
   if (!parsed.success) throw badRequest(`Invalid ${label}.`)

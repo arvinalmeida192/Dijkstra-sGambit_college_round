@@ -87,6 +87,21 @@ disputesRouter.post(
   disputeController.decide,
 )
 disputesRouter.post(
+  '/:id/resolve',
+  requireRoles('ARBITRATOR'),
+  disputeController.resolve,
+)
+disputesRouter.post(
+  '/:id/propose-resolution',
+  requireRoles('CLIENT', 'FREELANCER'),
+  disputeController.proposeResolution,
+)
+disputesRouter.post(
+  '/:id/accept-resolution',
+  requireRoles('CLIENT', 'FREELANCER'),
+  disputeController.acceptResolution,
+)
+disputesRouter.post(
   '/:id/evidence',
   optionalUpload,
   disputeController.addEvidence,

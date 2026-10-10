@@ -29,6 +29,8 @@ import {
   listDisputesForProject,
   listEvidenceForDispute,
   resolveDispute,
+  resolveDisputeWithOutcome,
+  setResolutionProposal,
   toPublicDispute,
   toPublicEvidence,
 } from './dispute.repository.js'
@@ -64,6 +66,7 @@ async function applyMilestoneStatus(client, {
   user,
   toStatus,
   note,
+  isDisputeResolution = false,
 }) {
   if (milestone.status === toStatus) return milestone
 
@@ -72,7 +75,10 @@ async function applyMilestoneStatus(client, {
     fromStatus: milestone.status,
     toStatus,
     actorRole,
-    context: { hasFreelancer: Boolean(project.freelancer_id) },
+    context: {
+      hasFreelancer: Boolean(project.freelancer_id),
+      isDisputeResolution,
+    },
   })
 
   const effects = transitionSideEffects(toStatus, milestone)
@@ -112,6 +118,13 @@ function milestoneStatusForDecision(decision) {
   if (decision === 'RELEASE_TO_FREELANCER') return 'APPROVED'
   if (decision === 'REFUND_TO_CLIENT') return 'REVISION_REQUESTED'
   return 'IN_REVIEW'
+}
+
+function milestoneStatusForOutcome(outcome) {
+  if (outcome === 'RESUME_EXISTING') return 'IN_PROGRESS'
+  if (outcome === 'RESUME_WITH_CHANGES') return 'IN_PROGRESS'
+  if (outcome === 'TERMINATE_WORK') return 'CANCELLED'
+  throw conflict(`Unknown resolution outcome: ${outcome}`)
 }
 
 async function assertPaymentBelongs(paymentId, projectId, milestoneId) {
@@ -465,3 +478,249 @@ export async function downloadEvidenceFile(user, evidenceId) {
     sha256Hash: evidence.sha256_hash || '',
   }
 }
+
+export async function proposeResolution(user, disputeId, input) {
+  const dispute = await findDisputeById(disputeId)
+  if (!dispute) throw notFound('Dispute not found.')
+
+  const project = await findProjectById(dispute.project_id)
+  const { isClient, isFreelancer } = assertParticipant(project, user)
+
+  if (!isClient && !isFreelancer) {
+    throw forbidden('Only the project client or freelancer can propose a resolution.')
+  }
+
+  if (dispute.status === 'RESOLVED') {
+    throw conflict('Dispute is already resolved.')
+  }
+
+  const proposal = {
+    proposedBy: user.id,
+    outcome: input.outcome,
+    summary: input.summary.trim(),
+    proposedAt: new Date().toISOString(),
+  }
+
+  const updated = await setResolutionProposal(disputeId, proposal)
+  if (!updated) {
+    throw conflict('Could not record resolution proposal (dispute state may have changed).')
+  }
+
+  await insertAuditLog({
+    actorId: user.id,
+    projectId: dispute.project_id,
+    milestoneId: dispute.milestone_id,
+    action: 'DISPUTE_RESOLUTION_PROPOSED',
+    metadata: {
+      disputeId,
+      proposedBy: user.id,
+      outcome: input.outcome,
+      summary: input.summary.trim(),
+    },
+  })
+
+  const evidence = await listEvidenceForDispute(disputeId)
+  return {
+    dispute: toPublicDispute(updated, evidence),
+    notice:
+      'Resolution proposal recorded. The counterparty must accept this proposal for work to resume or complete.',
+  }
+}
+
+export async function acceptResolution(user, disputeId) {
+  const dispute = await findDisputeById(disputeId)
+  if (!dispute) throw notFound('Dispute not found.')
+
+  const project = await findProjectById(dispute.project_id)
+  const { isClient, isFreelancer } = assertParticipant(project, user)
+
+  if (!isClient && !isFreelancer) {
+    throw forbidden('Only the project client or freelancer can accept a resolution.')
+  }
+
+  if (dispute.status === 'RESOLVED') {
+    throw conflict('Dispute is already resolved.')
+  }
+
+  if (!dispute.resolution_proposal) {
+    throw conflict('No open resolution proposal exists for this dispute.')
+  }
+
+  const proposal =
+    typeof dispute.resolution_proposal === 'string'
+      ? JSON.parse(dispute.resolution_proposal)
+      : dispute.resolution_proposal
+
+  if (proposal.proposedBy === user.id) {
+    throw forbidden(
+      'You cannot accept your own resolution proposal. Resolution requires counterparty acceptance.',
+    )
+  }
+
+  const milestone = await findMilestoneById(dispute.milestone_id)
+  if (!milestone) throw notFound('Milestone not found.')
+
+  const targetStatus = milestoneStatusForOutcome(proposal.outcome)
+
+  const result = await withTransaction(async (client) => {
+    const updated = await resolveDisputeWithOutcome(
+      {
+        id: disputeId,
+        resolvedBy: user.id,
+        resolutionType: 'MUTUAL_AGREEMENT',
+        resolutionOutcome: proposal.outcome,
+        resolutionSummary: proposal.summary,
+      },
+      client,
+    )
+
+    if (!updated) {
+      throw conflict('Could not resolve dispute (it may have been resolved already).')
+    }
+
+    let currentMilestone = milestone
+    if (milestone.status === 'DISPUTED') {
+      currentMilestone = await applyMilestoneStatus(client, {
+        milestone,
+        project,
+        user,
+        toStatus: targetStatus,
+        note: proposal.summary,
+        isDisputeResolution: true,
+      })
+    }
+
+    await insertAuditLog(
+      {
+        actorId: user.id,
+        projectId: project.id,
+        milestoneId: milestone.id,
+        action: 'DISPUTE_RESOLVED',
+        metadata: {
+          disputeId,
+          resolutionType: 'MUTUAL_AGREEMENT',
+          outcome: proposal.outcome,
+          summary: proposal.summary,
+          proposedBy: proposal.proposedBy,
+          acceptedBy: user.id,
+          milestoneStatus: currentMilestone.status,
+          fundsMovedByDecision: false,
+        },
+      },
+      client,
+    )
+
+    return { dispute: updated, milestone: currentMilestone }
+  })
+
+  const evidence = await listEvidenceForDispute(disputeId)
+  return {
+    dispute: toPublicDispute(result.dispute, evidence),
+    milestone: withAllowedTransitions(result.milestone),
+    notice:
+      'Dispute resolved by mutual agreement. This does not move escrow funds. Work may resume according to the agreed outcome.',
+  }
+}
+
+export async function resolveDisputeByArbitrator(user, disputeId, input) {
+  assertArbitrator(user)
+  const dispute = await findDisputeById(disputeId)
+  if (!dispute) throw notFound('Dispute not found.')
+
+  const project = await findProjectById(dispute.project_id)
+  assertParticipant(project, user)
+
+  if (dispute.status === 'RESOLVED') {
+    throw conflict('Dispute is already resolved.')
+  }
+
+  if (
+    dispute.arbitrator_id &&
+    dispute.arbitrator_id !== user.id
+  ) {
+    throw forbidden('Only the assigned arbitrator can resolve this dispute.')
+  }
+
+  const milestone = await findMilestoneById(dispute.milestone_id)
+  if (!milestone) throw notFound('Milestone not found.')
+
+  if (input.resolvePaymentId) {
+    await assertPaymentBelongs(
+      input.resolvePaymentId,
+      project.id,
+      milestone.id,
+    )
+  }
+
+  const targetStatus = milestoneStatusForOutcome(input.outcome)
+  const summary = input.summary.trim()
+
+  const result = await withTransaction(async (client) => {
+    let updated = await resolveDisputeWithOutcome(
+      {
+        id: disputeId,
+        resolvedBy: user.id,
+        resolutionType: 'ARBITRATOR_DECISION',
+        resolutionOutcome: input.outcome,
+        resolutionSummary: summary,
+        arbitratorId: user.id,
+      },
+      client,
+    )
+    if (!updated) {
+      throw conflict('Could not resolve dispute (state may have changed).')
+    }
+
+    if (input.resolvePaymentId) {
+      updated = await linkPayment(
+        disputeId,
+        'resolve',
+        input.resolvePaymentId,
+        client,
+      )
+    }
+
+    let currentMilestone = milestone
+    if (milestone.status === 'DISPUTED') {
+      currentMilestone = await applyMilestoneStatus(client, {
+        milestone,
+        project,
+        user,
+        toStatus: targetStatus,
+        note: summary,
+        isDisputeResolution: true,
+      })
+    }
+
+    await insertAuditLog(
+      {
+        actorId: user.id,
+        projectId: project.id,
+        milestoneId: milestone.id,
+        action: 'DISPUTE_RESOLVED',
+        metadata: {
+          disputeId,
+          resolutionType: 'ARBITRATOR_DECISION',
+          outcome: input.outcome,
+          summary,
+          arbitratorId: user.id,
+          resolvePaymentId: input.resolvePaymentId ?? null,
+          milestoneStatus: currentMilestone.status,
+          fundsMovedByDecision: false,
+        },
+      },
+      client,
+    )
+
+    return { dispute: updated, milestone: currentMilestone }
+  })
+
+  const evidence = await listEvidenceForDispute(disputeId)
+  return {
+    dispute: toPublicDispute(result.dispute, evidence),
+    milestone: withAllowedTransitions(result.milestone),
+    notice:
+      'Arbitrator resolution recorded. This does not move escrow funds. Work may resume according to the recorded outcome.',
+  }
+}
+

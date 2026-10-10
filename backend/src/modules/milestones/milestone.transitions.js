@@ -11,6 +11,7 @@ export const MILESTONE_STATUSES = [
   'REVISION_REQUESTED',
   'APPROVED',
   'DISPUTED',
+  'CANCELLED',
 ]
 
 /**
@@ -20,7 +21,7 @@ export const MILESTONE_STATUSES = [
  *   CLIENT | FREELANCER | ARBITRATOR
  *
  * Happy path: PENDING → IN_PROGRESS → SUBMITTED → IN_REVIEW → APPROVED
- * Branches: REVISION_REQUESTED, DISPUTED
+ * Branches: REVISION_REQUESTED, DISPUTED, CANCELLED
  *
  * Critical rule: FREELANCER may never transition to APPROVED
  * (cannot approve their own submission).
@@ -50,8 +51,13 @@ const TRANSITIONS = {
   APPROVED: {
     // Terminal for Phase 12 (payment release is later).
   },
+  CANCELLED: {
+    // Terminal when affected work is ended.
+  },
   DISPUTED: {
-    // Resolution paths for arbitrators (Phase 16/17 will expand).
+    // Resolution paths for arbitrators and dispute resolution workflow.
+    IN_PROGRESS: ['ARBITRATOR'],
+    CANCELLED: ['ARBITRATOR'],
     IN_REVIEW: ['ARBITRATOR'],
     APPROVED: ['ARBITRATOR'],
     REVISION_REQUESTED: ['ARBITRATOR'],
@@ -102,6 +108,20 @@ export function assertMilestoneTransition({
   }
   if (fromStatus === toStatus) {
     throw conflict(`Milestone is already ${fromStatus}.`)
+  }
+
+  // Authorized dispute resolution outcome paths (mutual agreement or arbitrator outcome):
+  if (
+    fromStatus === 'DISPUTED' &&
+    context.isDisputeResolution &&
+    (toStatus === 'IN_PROGRESS' || toStatus === 'CANCELLED')
+  ) {
+    if (toStatus === 'IN_PROGRESS' && context.hasFreelancer === false) {
+      throw conflict(
+        'Assign a freelancer before moving this milestone into active work.',
+      )
+    }
+    return { fromStatus, toStatus, actorRole: actorRole || 'DISPUTE_RESOLUTION' }
   }
 
   const allowedRoles = TRANSITIONS[fromStatus]?.[toStatus]
