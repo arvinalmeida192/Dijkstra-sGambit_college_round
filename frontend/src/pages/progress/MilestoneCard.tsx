@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Pencil, Trash2, Upload } from 'lucide-react'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { MilestoneStatusBadge } from '../../components/ui/MilestoneStatusBadge'
 import { Panel } from '../../components/ui/Panel'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
+import { routes } from '../../lib/routes'
 import type { Milestone } from '../../lib/api/milestones'
 import type {
   ReviewDecision,
@@ -241,6 +243,18 @@ export function MilestoneCard({
         </div>
       )}
 
+      {milestone.status === 'DISPUTED' ? (
+        <Alert tone="danger">
+          This milestone is currently disputed. Work and submissions are paused until the dispute is resolved.{' '}
+          <Link
+            to={routes.disputes(milestone.projectId)}
+            className="font-bold underline text-dark hover:text-accent ml-1"
+          >
+            View Dispute &amp; Resolution →
+          </Link>
+        </Alert>
+      ) : null}
+
       <div className="border-t-2 border-dark/10 pt-3 space-y-4">
         <SubmissionHistory
           submissions={submissions}
@@ -292,7 +306,15 @@ export function MilestoneCard({
         />
       ) : null}
 
-      {actions.length > 0 ? (
+      {milestone.status === 'DISPUTED' ? (
+        <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
+          <Link to={routes.disputes(milestone.projectId)}>
+            <Button size="sm" variant="danger">
+              Resolve in Disputes →
+            </Button>
+          </Link>
+        </div>
+      ) : actions.length > 0 ? (
         <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
           {actions.map((toStatus) => {
             const needsNote = transitionRequiresNote(toStatus)
@@ -319,6 +341,10 @@ export function MilestoneCard({
       ) : milestone.status === 'APPROVED' ? (
         <p className="font-mono text-[11px] text-dark/50">
           Milestone approved. Payment release connects in a later phase.
+        </p>
+      ) : milestone.status === 'CANCELLED' ? (
+        <p className="font-mono text-[11px] text-dark/50">
+          Milestone cancelled. Work ended via dispute resolution.
         </p>
       ) : null}
     </Panel>

@@ -209,6 +209,12 @@ export async function changeMilestoneStatus(user, milestoneId, input) {
     throw conflict('Cannot change milestone status on a cancelled project.')
   }
 
+  if (milestone.status === 'DISPUTED') {
+    throw conflict(
+      'Cannot change status of a disputed milestone directly. Resolve the dispute through the dispute resolution workflow.',
+    )
+  }
+
   const actorRole = resolveActorRole(project, user)
   assertMilestoneTransition({
     fromStatus: milestone.status,
