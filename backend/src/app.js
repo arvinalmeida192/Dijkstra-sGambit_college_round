@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import { env } from './config/env.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { agreementsRouter } from './modules/agreements/agreement.routes.js'
+import { milestonesRouter } from './modules/milestones/milestone.routes.js'
 import {
   invitationsRouter,
   projectsRouter,
@@ -30,6 +31,7 @@ export function createApp() {
   app.use('/api/v1/projects', projectsRouter)
   app.use('/api/v1/invitations', invitationsRouter)
   app.use('/api/v1/agreements', agreementsRouter)
+  app.use('/api/v1/milestones', milestonesRouter)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
