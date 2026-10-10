@@ -5,6 +5,7 @@ import { projectAgreementsRouter } from '../agreements/agreement.routes.js'
 import { projectMilestonesRouter } from '../milestones/milestone.routes.js'
 import { projectPaymentsRouter } from '../payments/payment.routes.js'
 import { projectDisputesRouter } from '../disputes/dispute.routes.js'
+import { projectFundingRouter } from '../funding/funding.routes.js'
 import * as projectController from './project.controller.js'
 
 /**
@@ -46,6 +47,7 @@ projectsRouter.use('/:id/agreements', projectAgreementsRouter)
 projectsRouter.use('/:id/milestones', projectMilestonesRouter)
 projectsRouter.use('/:id/payments', projectPaymentsRouter)
 projectsRouter.use('/:id/disputes', projectDisputesRouter)
+projectsRouter.use('/:id/funding', projectFundingRouter)
 
 invitationsRouter.get('/:token', projectController.previewInvitation)
 invitationsRouter.post(

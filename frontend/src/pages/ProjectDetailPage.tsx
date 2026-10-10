@@ -219,6 +219,11 @@ export function ProjectDetailPage() {
                   Progress
                 </Button>
               </Link>
+              <Link to={routes.fund(project.id)}>
+                <Button size="sm" variant="primary">
+                  Fund Project
+                </Button>
+              </Link>
               <Link to={routes.disputes(project.id)}>
                 <Button size="sm" variant="secondary">
                   Disputes

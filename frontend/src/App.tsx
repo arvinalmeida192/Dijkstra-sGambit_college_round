@@ -5,6 +5,7 @@ import { AppShell } from './components/layout/AppShell'
 import { AgreementPage } from './pages/AgreementPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DisputesPage } from './pages/DisputesPage'
+import { FundingPage } from './pages/FundingPage'
 import { HomePage } from './pages/HomePage'
 import { InvitePage } from './pages/InvitePage'
 import { LoginPage } from './pages/LoginPage'
@@ -48,6 +49,10 @@ export default function App() {
               <Route
                 path="/projects/:projectId/payments"
                 element={<PaymentsPage />}
+              />
+              <Route
+                path="/projects/:projectId/fund"
+                element={<FundingPage />}
               />
             </Route>
           </Route>

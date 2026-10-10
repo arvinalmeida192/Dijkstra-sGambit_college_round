@@ -3,6 +3,8 @@ import {
   forbidden,
   notFound,
 } from '../../utils/errors.js'
+import { env } from '../../config/env.js'
+import { isProjectFunded } from '../funding/funding.service.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
 import {
@@ -222,6 +224,18 @@ export async function changeMilestoneStatus(user, milestoneId, input) {
     actorRole,
     context: { hasFreelancer: Boolean(project.freelancer_id) },
   })
+
+  // Phase 21: When GATEWAY_PAYMENTS_ENABLED=true, reject starting work if unfunded
+  if (input.status === 'IN_PROGRESS' && milestone.status === 'PENDING') {
+    if (env.gatewayPaymentsEnabled) {
+      const funded = await isProjectFunded(project.id)
+      if (!funded) {
+        throw conflict(
+          'Project funding required before starting work. The client must fund the project first.',
+        )
+      }
+    }
+  }
 
   // Note required for revision / dispute clarity (soft requirement).
   if (

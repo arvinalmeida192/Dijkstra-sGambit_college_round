@@ -14,6 +14,8 @@ import { paymentsRouter } from './modules/payments/payment.routes.js'
 import { disputesRouter } from './modules/disputes/dispute.routes.js'
 import { aiRouter } from './modules/ai/ai.routes.js'
 import { notificationsRouter } from './modules/notifications/notification.routes.js'
+import { fundingRouter } from './modules/funding/funding.routes.js'
+import { webhook as fundingWebhook } from './modules/funding/funding.controller.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 export function createApp() {
@@ -26,6 +28,14 @@ export function createApp() {
       credentials: true,
     }),
   )
+
+  // Razorpay webhook endpoint with raw body parsing for signature verification
+  app.post(
+    '/api/v1/funding/webhook',
+    express.raw({ type: '*/*', limit: '1mb' }),
+    fundingWebhook,
+  )
+
   app.use(express.json({ limit: '1mb' }))
 
   app.get('/health', (_req, res) => {
@@ -40,6 +50,7 @@ export function createApp() {
   app.use('/api/v1/submissions', submissionsRouter)
   app.use('/api/v1/payments', paymentsRouter)
   app.use('/api/v1/disputes', disputesRouter)
+  app.use('/api/v1/funding', fundingRouter)
   app.use('/api/v1/ai', aiRouter)
   app.use('/api/v1/notifications', notificationsRouter)
 

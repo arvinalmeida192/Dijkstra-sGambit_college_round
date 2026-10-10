@@ -11,5 +11,6 @@ export const routes = {
   progress: (projectId: string) => `/projects/${projectId}/progress`,
   disputes: (projectId: string) => `/projects/${projectId}/disputes`,
   payments: (projectId: string) => `/projects/${projectId}/payments`,
+  fund: (projectId: string) => `/projects/${projectId}/fund`,
   uiDemo: '/dev/ui',
 } as const

@@ -339,9 +339,16 @@ export function MilestoneCard({
           })}
         </div>
       ) : milestone.status === 'APPROVED' ? (
-        <p className="font-mono text-[11px] text-dark/50">
-          Milestone approved. Payment release connects in a later phase.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t-2 border-dark/10">
+          <p className="font-mono text-[11px] text-dark/70">
+            Milestone approved. Funds can be released to the freelancer.
+          </p>
+          <Link to={routes.fund(milestone.projectId)}>
+            <Button size="sm" variant="primary">
+              View Escrow / Release Funds →
+            </Button>
+          </Link>
+        </div>
       ) : milestone.status === 'CANCELLED' ? (
         <p className="font-mono text-[11px] text-dark/50">
           Milestone cancelled. Work ended via dispute resolution.
