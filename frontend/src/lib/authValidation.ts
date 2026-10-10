@@ -1,5 +1,5 @@
-import type { UserRole } from './roles'
-import { USER_ROLES } from './roles'
+import type { RegisterableRole } from './roles'
+import { REGISTERABLE_ROLES } from './roles'
 
 export type FieldErrors = Record<string, string>
 
@@ -26,7 +26,7 @@ export function validateName(name: string): string | undefined {
 }
 
 export function validateRole(role: string): string | undefined {
-  if (!(USER_ROLES as readonly string[]).includes(role)) {
+  if (!(REGISTERABLE_ROLES as readonly string[]).includes(role)) {
     return 'Select Client or Freelancer.'
   }
   return undefined
@@ -49,7 +49,7 @@ export function validateRegisterForm(input: {
   email: string
   password: string
   confirmPassword: string
-  role: UserRole | ''
+  role: RegisterableRole | ''
 }): FieldErrors {
   const errors: FieldErrors = {}
   const nameError = validateName(input.name)

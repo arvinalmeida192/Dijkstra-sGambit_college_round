@@ -1,4 +1,4 @@
-import type { UserRole } from '../roles'
+import type { RegisterableRole, UserRole } from '../roles'
 import { ApiError, apiRequest, isApiConfigured } from './client'
 
 /**
@@ -22,7 +22,7 @@ export type RegisterRequest = {
   name: string
   email: string
   password: string
-  role: UserRole
+  role: RegisterableRole
 }
 
 export type AuthSession = {

@@ -31,6 +31,7 @@ import {
   type Submission,
   type SubmissionInput,
 } from '../lib/api/submissions'
+import { openDispute } from '../lib/api/disputes'
 import {
   getMilestoneActionLabel,
   transitionRequiresNote,
@@ -275,15 +276,26 @@ export function ProgressPage() {
     setTransitionLoading(true)
     setActionError(null)
     try {
-      await updateMilestoneStatus(token, milestone.id, {
-        status: toStatus,
-        ...(statusNote ? { note: statusNote } : {}),
-      })
-      setPendingTransition(null)
-      setNote('')
-      setActionSuccess(
-        `${milestone.title}: ${getMilestoneActionLabel(toStatus)}.`,
-      )
+      if (toStatus === 'DISPUTED') {
+        const result = await openDispute(token, milestone.id, {
+          reason: statusNote?.trim() || 'Dispute opened from progress',
+        })
+        setPendingTransition(null)
+        setNote('')
+        setActionSuccess(
+          `${milestone.title}: dispute opened. ${result.notice}`,
+        )
+      } else {
+        await updateMilestoneStatus(token, milestone.id, {
+          status: toStatus,
+          ...(statusNote ? { note: statusNote } : {}),
+        })
+        setPendingTransition(null)
+        setNote('')
+        setActionSuccess(
+          `${milestone.title}: ${getMilestoneActionLabel(toStatus)}.`,
+        )
+      }
       await load()
     } catch (err) {
       setActionError(
