@@ -24,4 +24,10 @@ export const env = {
   /** Absolute or relative path for private deliverable/evidence files. */
   storagePrivateDir: process.env.STORAGE_PRIVATE_DIR ?? '',
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 10 * 1024 * 1024),
+  /** Local/test EVM — leave unset to disable payment verification. */
+  chainId: process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : 0,
+  rpcUrl: process.env.RPC_URL ?? '',
+  escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
+  /** ERC-20 decimals for amount mapping (app cents → token base). */
+  tokenDecimals: Number(process.env.TOKEN_DECIMALS ?? 6),
 }
