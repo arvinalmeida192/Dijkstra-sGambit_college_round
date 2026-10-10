@@ -12,6 +12,8 @@ import {
 import { submissionsRouter } from './modules/submissions/submission.routes.js'
 import { paymentsRouter } from './modules/payments/payment.routes.js'
 import { disputesRouter } from './modules/disputes/dispute.routes.js'
+import { aiRouter } from './modules/ai/ai.routes.js'
+import { notificationsRouter } from './modules/notifications/notification.routes.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 export function createApp() {
@@ -38,6 +40,8 @@ export function createApp() {
   app.use('/api/v1/submissions', submissionsRouter)
   app.use('/api/v1/payments', paymentsRouter)
   app.use('/api/v1/disputes', disputesRouter)
+  app.use('/api/v1/ai', aiRouter)
+  app.use('/api/v1/notifications', notificationsRouter)
 
   app.use(notFoundHandler)
   app.use(errorHandler)

@@ -35,6 +35,7 @@ type MilestoneCardProps = {
   isFreelancer: boolean
   projectClosed: boolean
   busy: boolean
+  token: string | null
   onTransition: (toStatus: MilestoneStatus) => void
   onEdit: () => void
   onDelete: () => void
@@ -85,6 +86,7 @@ export function MilestoneCard({
   isFreelancer,
   projectClosed,
   busy,
+  token,
   onTransition,
   onEdit,
   onDelete,
@@ -234,7 +236,11 @@ export function MilestoneCard({
           busy={busy}
           onDownload={onDownload}
         />
-        <AiAssessmentPanel />
+        <AiAssessmentPanel
+          token={token}
+          submissionId={latest?.id ?? null}
+          canRequest={(isClient || isFreelancer) && !projectClosed}
+        />
       </div>
 
       {canSubmit ? (

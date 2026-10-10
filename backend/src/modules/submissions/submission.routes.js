@@ -4,10 +4,11 @@ import { authenticate } from '../../middleware/authenticate.js'
 import { requireRoles } from '../../middleware/authorize.js'
 import { storageConfig } from '../../config/storage.js'
 import { badRequest } from '../../utils/errors.js'
+import { submissionAssessmentsRouter } from '../ai/ai.routes.js'
 import * as submissionController from './submission.controller.js'
 
 /**
- * Submissions & reviews (Phase 14)
+ * Submissions & reviews (Phase 14) + AI assessments (Phase 19)
  *
  * Nested under milestones (auth inherited when mounted under milestonesRouter):
  *   GET  /api/v1/milestones/:id/submissions
@@ -17,6 +18,7 @@ import * as submissionController from './submission.controller.js'
  *   GET  /api/v1/submissions/:id
  *   GET  /api/v1/submissions/:id/file         (authorized download; private storage)
  *   POST /api/v1/submissions/:id/review       (CLIENT)
+ *   GET|POST /api/v1/submissions/:id/assessments
  */
 
 const upload = multer({
@@ -63,6 +65,7 @@ milestoneSubmissionsRouter.post(
 
 submissionsRouter.use(authenticate(true))
 
+submissionsRouter.use('/:id/assessments', submissionAssessmentsRouter)
 submissionsRouter.get('/:id', submissionController.getById)
 submissionsRouter.get('/:id/file', submissionController.downloadFile)
 submissionsRouter.post(

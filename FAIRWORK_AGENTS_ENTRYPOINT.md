@@ -8,8 +8,9 @@ These instructions apply to every coding-agent task in this repository.
 2. Read `FAIRWORK_PROJECT_OVERVIEW.md`.
 3. Read `FAIRWORK_FRONTEND_FEATURES.md`.
 4. Read `FAIRWORK_BACKEND_ARCHITECTURE.md`.
-5. Inspect the current repository and `git status` before editing.
-6. If any required file is missing or inaccessible, say exactly which file is missing. Do not pretend to have read it or invent its contents.
+5. Read `AGENTS.md` for the approved AI model shortlist and Phase 19 model constraints.
+6. Inspect the current repository and `git status` before editing.
+7. If any required file is missing or inaccessible, say exactly which file is missing. Do not pretend to have read it or invent its contents.
 
 ## Phase-based implementation
 
@@ -30,3 +31,4 @@ These instructions apply to every coding-agent task in this repository.
 - Test what changed and report commands/results honestly.
 - Never claim mocked AI, integrations, escrow, or blockchain transactions are real.
 - AI must not make final dispute decisions or independently authorize transfers.
+- Do not download model weights, call paid APIs, or add external model providers without explicit human approval. Follow the Ollama shortlist and routing rules in `AGENTS.md`.

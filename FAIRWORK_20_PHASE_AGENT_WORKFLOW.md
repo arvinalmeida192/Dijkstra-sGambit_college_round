@@ -117,7 +117,7 @@ Expected stack, unless the existing approved repository says otherwise:
 - Database: PostgreSQL.
 - Smart contracts: Solidity on a local EVM chain or testnet.
 - Blockchain client: Ethers.js.
-- AI: an Ollama/local model or an approved hosted model API.
+- AI: local Ollama via a configurable provider/model adapter. Approved Phase 19 shortlist (routing defaults, not ranked preferences): code `qwen2.5-coder:1.5b`; text/documents `qwen3:1.7b`, `gemma3:1b`; visual `qwen2.5vl:3b`, `gemma3:4b`. Do not download weights or add paid/external providers without explicit human approval.
 - File storage: private storage for deliverables and dispute evidence.
 
 Use a **modular monolith** for the backend. Do not introduce microservices for the MVP.
@@ -439,19 +439,35 @@ Phases are deliberately small. Each phase has a goal, scope, and acceptance crit
 
 **Goal:** Add bounded AI assistance and deterministic deadline reminders.
 
+**Approved local Ollama shortlist (routing defaults; benchmark before declaring a preferred model within a category):**
+
+| Deliverable type | Models |
+|---|---|
+| Code submissions | `qwen2.5-coder:1.5b` |
+| General text/documents | `qwen3:1.7b`, `gemma3:1b` |
+| Visual submissions | `qwen2.5vl:3b`, `gemma3:4b` |
+
+Documenting this shortlist does **not** authorize downloading model weights or installing runtimes. That requires separate explicit human approval. See root `AGENTS.md`.
+
 **Do:**
-- Implement an AI adapter for the approved local model or hosted API, if configured.
-- Start with acceptance-criteria assessment and dispute-evidence summaries.
-- Validate structured output and store assessment provenance, evidence references, and uncertainty.
-- Keep AI advisory only; it cannot approve milestones, decide disputes, or initiate payment.
-- Implement deadline/inactivity alerts using deterministic rules and a safe scheduled-job pattern.
-- Make scheduled jobs idempotent and test repeat execution.
-- If model credentials or runtime are unavailable, implement the interface and tests only where approved, and report the limitation rather than fabricating output.
+- Implement a provider/model adapter that supports all five configured models through Ollama, with model names and connection settings configurable (not scattered/hardcoded).
+- Route submissions by deliverable type. Do not run all five models for every submission.
+- For ordinary submissions, run the appropriate configured model. Where useful, support comparing the two candidates for text or visual deliverables (especially when confidence is low or the result is ambiguous). Avoid unnecessary model calls.
+- Benchmark candidate models against representative submissions and expected outcomes before claiming which performs best.
+- Return validated structured assessments covering: acceptance criteria met, supporting evidence references, outstanding work, uncertainty, model/provider identity, and assessment status. Start with acceptance-criteria assessment and dispute-evidence summaries.
+- For code submissions, use objective evidence where available (Git diffs/history, test results). For visual submissions, inspect submitted screenshots/files. For written deliverables, compare against agreed requirements and document history where available.
+- Never claim to know actual hours worked, authorship, or effort percentage from model inference alone. Do not fabricate evidence or confidence.
+- Keep AI advisory only; models must not independently approve milestones, decide disputes, or authorize payments. Existing agreement rules, evidence, and authorized human dispute processes remain authoritative.
+- If a model is unavailable, output is invalid, or models disagree materially, handle the failure explicitly and use a configured fallback or human-review status. Never silently fabricate a successful assessment.
+- Implement deadline/inactivity alerts using deterministic rules independent of model judgment, with a safe scheduled-job pattern. Make scheduled jobs idempotent and test repeat execution.
+- If model runtime is unavailable, implement the interface and tests only where approved, and report the limitation rather than fabricating output. Do not call paid APIs or introduce external model providers without explicit human approval.
 
 **Acceptance criteria:**
-- AI output is validated and visibly advisory.
-- Deadline rules are deterministic and tested.
-- No AI result directly authorizes a financial action.
+- Adapter covers the five configured Ollama models with configurable names/connection settings; routing follows deliverable type.
+- AI output is schema-validated, stores provenance/evidence references/uncertainty, and is visibly advisory.
+- Failures (unavailable model, invalid output, material disagreement) surface as explicit fallback or human-review status—not fabricated success.
+- Deadline/inactivity rules are deterministic, independent of model judgment, idempotent, and tested.
+- No AI result directly authorizes a financial action, milestone approval, or dispute decision.
 - Notification jobs do not create uncontrolled duplicates.
 
 ### Phase 20 — End-to-End Integration, Security Review, and Demo Readiness

@@ -8,6 +8,7 @@ import { IconButton } from '../ui/IconButton'
 import { PageContainer } from '../ui/PageContainer'
 import { routes } from '../../lib/routes'
 import { cn } from '../../lib/cn'
+import { NotificationsBell } from './NotificationsBell'
 
 const primaryNav = [
   { to: routes.dashboard, label: 'Dashboard' },
@@ -76,6 +77,7 @@ export function AppShell() {
           <div className="hidden md:flex items-center gap-3">
             {user ? (
               <>
+                <NotificationsBell />
                 <span className="font-mono text-[11px] uppercase tracking-wider text-dark/70 max-w-[12rem] truncate">
                   {user.name} · {user.role}
                 </span>
@@ -109,16 +111,21 @@ export function AppShell() {
                 </NavLink>
               ))}
               {user ? (
-                <button
-                  type="button"
-                  className={navClassName({ isActive: false })}
-                  onClick={() => {
-                    setMobileOpen(false)
-                    onLogout()
-                  }}
-                >
-                  Sign out
-                </button>
+                <>
+                  <div className="px-1 py-1">
+                    <NotificationsBell />
+                  </div>
+                  <button
+                    type="button"
+                    className={navClassName({ isActive: false })}
+                    onClick={() => {
+                      setMobileOpen(false)
+                      onLogout()
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </>
               ) : null}
             </PageContainer>
           </div>
