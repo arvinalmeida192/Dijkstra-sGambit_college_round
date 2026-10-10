@@ -238,12 +238,7 @@ export function TermsForm({
         previousDueDate = currentDue
         lastMilestoneDueDate = currentDue
       }
-<<<<<<< HEAD
       let reviewWindowDays: number | undefined = 7
-=======
-
-      let reviewWindowDays: number | undefined
->>>>>>> origin/main
       if (m.reviewWindowDays.trim()) {
         const n = Number(m.reviewWindowDays)
         if (!Number.isInteger(n) || n < 1) {

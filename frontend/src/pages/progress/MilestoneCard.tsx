@@ -12,7 +12,6 @@ import { Textarea } from '../../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
 import type { Milestone, MilestoneExtension } from '../../lib/api/milestones'
 import { routes } from '../../lib/routes'
-import type { Milestone } from '../../lib/api/milestones'
 import type {
   ReviewDecision,
   Submission,
@@ -428,25 +427,6 @@ export function MilestoneCard({
           pendingExtension.proposedBy !== currentUserId &&
           (isClient || isFreelancer) ? (
             <div className="flex flex-wrap gap-2">
-      {milestone.status === 'DISPUTED' ? (
-        <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
-          <Link to={routes.disputes(milestone.projectId)}>
-            <Button size="sm" variant="danger">
-              Resolve in Disputes →
-            </Button>
-          </Link>
-        </div>
-      ) : actions.length > 0 ? (
-        <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
-          {actions.map((toStatus) => {
-            const needsNote = transitionRequiresNote(toStatus)
-            const variant =
-              toStatus === 'APPROVED'
-                ? 'primary'
-                : toStatus === 'DISPUTED'
-                  ? 'danger'
-                  : 'secondary'
-            return (
               <Button
                 size="sm"
                 disabled={busy}
