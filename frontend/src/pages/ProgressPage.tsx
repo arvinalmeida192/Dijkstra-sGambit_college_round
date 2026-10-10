@@ -447,6 +447,7 @@ export function ProgressPage() {
                   isFreelancer={isFreelancer}
                   projectClosed={projectClosed}
                   busy={busyId === milestone.id}
+                  token={token}
                   onTransition={(toStatus) =>
                     requestTransition(milestone, toStatus)
                   }

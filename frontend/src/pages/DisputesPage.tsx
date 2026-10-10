@@ -34,6 +34,7 @@ import {
   DISPUTE_STATUS_TONES,
 } from '../lib/disputeStatus'
 import { routes } from '../lib/routes'
+import { DisputeAiPanel } from './disputes/DisputeAiPanel'
 
 const DECISION_OPTIONS: { value: DisputeDecision; label: string }[] = [
   {
@@ -334,8 +335,8 @@ export function DisputesPage() {
       <Alert tone="info">
         Dispute decisions are recorded by an authorized human reviewer. They do{' '}
         <strong>not</strong> move escrow funds. On-chain release or refund still
-        requires a verified transaction on the Payments page. AI summaries are
-        not part of this screen.
+        requires a verified transaction on the Payments page. Optional AI
+        evidence summaries below are advisory only and never decide the case.
       </Alert>
 
       {!isApiConfigured() ? (
@@ -492,6 +493,17 @@ export function DisputesPage() {
                           Claim for review
                         </Button>
                       ) : null}
+                    </Panel>
+
+                    <Panel className="space-y-3">
+                      <DisputeAiPanel
+                        token={token}
+                        disputeId={detail.id}
+                        canRequest={
+                          (isClient || isFreelancer || isArbitrator) &&
+                          detail.status !== 'RESOLVED'
+                        }
+                      />
                     </Panel>
 
                     <Panel className="space-y-3">

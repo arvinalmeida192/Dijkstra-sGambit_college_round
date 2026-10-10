@@ -4,10 +4,11 @@ import { authenticate } from '../../middleware/authenticate.js'
 import { requireRoles } from '../../middleware/authorize.js'
 import { storageConfig } from '../../config/storage.js'
 import { badRequest } from '../../utils/errors.js'
+import { disputeAssessmentsRouter } from '../ai/ai.routes.js'
 import * as disputeController from './dispute.controller.js'
 
 /**
- * Disputes (Phase 18)
+ * Disputes (Phase 18) + AI evidence summaries (Phase 19)
  *
  * Nested under projects (auth inherited):
  *   GET  /api/v1/projects/:id/disputes
@@ -21,6 +22,7 @@ import * as disputeController from './dispute.controller.js'
  *   POST /api/v1/disputes/:id/decide      — ARBITRATOR (records decision only)
  *   POST /api/v1/disputes/:id/evidence    — multipart or JSON
  *   GET  /api/v1/disputes/evidence/:evidenceId/file
+ *   GET|POST /api/v1/disputes/:id/assessments
  */
 
 const upload = multer({
@@ -72,6 +74,7 @@ disputesRouter.get(
   '/evidence/:evidenceId/file',
   disputeController.downloadEvidence,
 )
+disputesRouter.use('/:id/assessments', disputeAssessmentsRouter)
 disputesRouter.get('/:id', disputeController.getById)
 disputesRouter.post(
   '/:id/claim',

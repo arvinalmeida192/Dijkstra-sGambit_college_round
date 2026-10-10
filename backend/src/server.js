@@ -1,12 +1,14 @@
 import { createApp } from './app.js'
 import { env } from './config/env.js'
 import { pool } from './db/pool.js'
+import { startNotificationScheduler } from './modules/notifications/notification.jobs.js'
 
 async function main() {
   // Fail fast if DB is unreachable
   await pool.query('SELECT 1')
 
   const app = createApp()
+  startNotificationScheduler()
   app.listen(env.port, () => {
     console.log(`Fairwork API listening on http://localhost:${env.port}`)
     console.log(`Health: GET /health`)
@@ -17,6 +19,8 @@ async function main() {
     console.log(`Submissions: /api/v1/milestones/:id/submissions | /api/v1/submissions/:id`)
     console.log(`Payments: /api/v1/projects/:id/payments | /api/v1/milestones/:id/payments | /api/v1/payments/:id/sync`)
     console.log(`Disputes: /api/v1/projects/:id/disputes | /api/v1/milestones/:id/disputes | /api/v1/disputes/:id`)
+    console.log(`AI: /api/v1/submissions/:id/assessments | /api/v1/disputes/:id/assessments | /api/v1/ai/benchmark`)
+    console.log(`Notifications: /api/v1/notifications | POST /run-jobs`)
   })
 }
 
