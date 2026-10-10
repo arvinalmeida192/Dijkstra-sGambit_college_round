@@ -172,14 +172,17 @@ describe('funding module', () => {
     expect(startBlocked.status).toBe(409)
     expect(startBlocked.body.message).toMatch(/funding required/i)
 
-    // 2. Client creates funding order (server-side amount = 15000)
+    // 2. Client creates funding order (server-side total = 15000 + 2% fee 300 = 15300)
     const orderRes = await request(app)
       .post(`/api/v1/projects/${ctx.projectId}/funding/order`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
       .send({})
     expect(orderRes.status).toBe(201)
     expect(orderRes.body.orderId).toBeDefined()
-    expect(orderRes.body.amount).toBe(15000)
+    expect(orderRes.body.amount).toBe(15300) // in paise (total payable)
+    expect(orderRes.body.totalAmountCents).toBe(15000)
+    expect(orderRes.body.feeAmountCents).toBe(300)
+    expect(orderRes.body.totalPayableCents).toBe(15300)
     expect(orderRes.body.currency).toBe('INR')
     const orderId = orderRes.body.orderId
 
@@ -244,7 +247,7 @@ describe('funding module', () => {
 
     // 8. Attempting to release unapproved milestone is rejected
     const earlyRelease = await request(app)
-      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone2.id}/release`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
       .send({})
     expect(earlyRelease.status).toBe(409)
@@ -268,17 +271,16 @@ describe('funding module', () => {
     expect(reviewRes.status).toBe(200)
     expect(reviewRes.body.milestone.status).toBe('APPROVED')
 
-    // 10. Release approved milestone payment (Sandbox simulated payout)
-    const releaseRes = await request(app)
-      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
+    // 10. Check that milestone 1 payout was automatically triggered upon approval
+    const statusAfterApproval = await request(app)
+      .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
-      .send({ notes: 'Great work' })
-    expect(releaseRes.status).toBe(200)
-    expect(releaseRes.body.milestoneFund.status).toBe('RELEASED')
-    expect(releaseRes.body.milestoneFund.payoutReference).toMatch(/^SIM-PAYOUT-/)
-    expect(releaseRes.body.notice).toMatch(/Sandbox payout/i)
+    expect(statusAfterApproval.status).toBe(200)
+    const fund1 = statusAfterApproval.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
+    expect(fund1.status).toBe('RELEASED')
+    expect(fund1.payoutReference).toMatch(/^SIM-PAYOUT-/)
 
-    // 11. Duplicate release is rejected
+    // 11. Duplicate release is rejected idempotently
     const dupRelease = await request(app)
       .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
@@ -380,6 +382,134 @@ describe('funding module', () => {
     expect(dupRes.status).toBe(200)
     expect(dupRes.body.status).toBe('ignored')
     expect(dupRes.body.reason).toBe('duplicate')
+
+    env.gatewayPaymentsEnabled = false
+  })
+
+  it('records recoverable payout failure when provider fails and allows successful retry', async () => {
+    env.gatewayPaymentsEnabled = true
+    env.razorpayKeySecret = 'test_secret_123'
+    const origPayoutMode = env.payoutMode
+    env.payoutMode = 'failing_stub' // temporarily use failing provider stub
+
+    const ctx = await setupActiveAgreementProject()
+    const milestone1 = ctx.milestones[0]
+
+    // Fund project
+    const orderRes = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/order`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({})
+    const orderId = orderRes.body.orderId
+    const paymentId = 'pay_fail_test_' + Math.random().toString(16).slice(2)
+    const signature = generateSignature(orderId, paymentId, env.razorpayKeySecret)
+
+    await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/verify`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ orderId, paymentId, signature })
+
+    // Move milestone to APPROVED
+    await request(app)
+      .patch(`/api/v1/milestones/${milestone1.id}/status`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ status: 'IN_PROGRESS' })
+
+    const subRes = await request(app)
+      .post(`/api/v1/milestones/${milestone1.id}/submissions`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .field('notes', 'Deliverable')
+      .attach('file', Buffer.from('test'), 'test.txt')
+
+    // Approve - triggers release which fails cleanly and records FAILED status
+    await request(app)
+      .post(`/api/v1/submissions/${subRes.body.submission.id}/review`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ decision: 'APPROVED' })
+
+    // Status is FAILED and retriable
+    const statusBeforeRetry = await request(app)
+      .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+    const fundBefore = statusBeforeRetry.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
+    expect(fundBefore.status).toBe('FAILED')
+    expect(fundBefore.failureReason).toMatch(/timeout/i)
+
+    // Switch back to simulated mode for retry
+    env.payoutMode = 'simulated'
+
+    const retryRes = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ notes: 'Retry release' })
+    expect(retryRes.status).toBe(200)
+    expect(retryRes.body.milestoneFund.status).toBe('RELEASED')
+
+    env.gatewayPaymentsEnabled = false
+    env.payoutMode = origPayoutMode
+  })
+
+  it('allows eligible undisputed milestones to be released independently when another milestone is disputed', async () => {
+    env.gatewayPaymentsEnabled = true
+    env.razorpayKeySecret = 'test_secret_123'
+
+    const ctx = await setupActiveAgreementProject()
+    const milestone1 = ctx.milestones[0]
+    const milestone2 = ctx.milestones[1]
+
+    // Fund project
+    const orderRes = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/order`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({})
+    const orderId = orderRes.body.orderId
+    const paymentId = 'pay_multi_' + Math.random().toString(16).slice(2)
+    const signature = generateSignature(orderId, paymentId, env.razorpayKeySecret)
+
+    await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/verify`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ orderId, paymentId, signature })
+
+    // Start work on both
+    await request(app)
+      .patch(`/api/v1/milestones/${milestone1.id}/status`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ status: 'IN_PROGRESS' })
+
+    await request(app)
+      .patch(`/api/v1/milestones/${milestone2.id}/status`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ status: 'IN_PROGRESS' })
+
+    // Dispute milestone 1
+    await request(app)
+      .post(`/api/v1/milestones/${milestone1.id}/disputes`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ reason: 'Dispute milestone 1' })
+
+    // Submit & approve milestone 2
+    const sub2 = await request(app)
+      .post(`/api/v1/milestones/${milestone2.id}/submissions`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .field('notes', 'Deliverable 2')
+      .attach('file', Buffer.from('test2'), 'test2.txt')
+
+    const rev2 = await request(app)
+      .post(`/api/v1/submissions/${sub2.body.submission.id}/review`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ decision: 'APPROVED' })
+    expect(rev2.status).toBe(200)
+
+    // Milestone 2 was released independently
+    const statusRes = await request(app)
+      .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+    const fund1 = statusRes.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
+    const fund2 = statusRes.body.milestoneFunds.find((f) => f.milestoneId === milestone2.id)
+
+    expect(fund1.status).toBe('HELD') // Disputed milestone remains held
+    expect(fund2.status).toBe('RELEASED') // Undisputed milestone proceeded
 
     env.gatewayPaymentsEnabled = false
   })

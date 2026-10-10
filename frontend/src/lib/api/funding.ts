@@ -1,5 +1,14 @@
 import { apiRequest } from './client'
 
+export type FeeCalculation = {
+  projectAmountCents: number
+  feeRate: number
+  feeAmountCents: number
+  totalPayableCents: number
+  feeAmountPaise: number
+  totalPayablePaise: number
+}
+
 export type FundingStatusResponse = {
   enabled: boolean
   keyId?: string
@@ -7,12 +16,13 @@ export type FundingStatusResponse = {
   isFunded: boolean
   totalAmountPaise?: number
   totalAmountCents?: number
-  agreement?: {
+  feeEstimate?: FeeCalculation | null
+  activeAgreement?: {
     id: string
     version: number
     title: string
     totalPayment: number
-    currency: string
+    status: string
   } | null
   funding: {
     id: string
@@ -22,6 +32,10 @@ export type FundingStatusResponse = {
     amount: number
     currency: string
     status: string
+    feeAmount?: number
+    totalPayable?: number
+    feeRate?: number
+    feeStatus?: string
     gatewayProvider: string
     gatewayOrderId: string | null
     gatewayPaymentId: string | null
@@ -37,7 +51,8 @@ export type FundingStatusResponse = {
     milestoneStatus: string | null
     sortOrder: number
     amount: number
-    status: 'HELD' | 'RELEASED' | 'REFUNDED'
+    status: 'HELD' | 'RELEASED' | 'FAILED' | 'REFUNDED'
+    failureReason?: string | null
     payoutReference: string | null
     releasedAt: string | null
     createdAt: string
@@ -47,8 +62,12 @@ export type FundingStatusResponse = {
 
 export type CreateFundingOrderResponse = {
   orderId: string
+  amount: number
   amountPaise: number
   amountCents: number
+  feeAmountCents: number
+  totalPayableCents: number
+  feeRate: number
   currency: string
   keyId: string
   agreementVersion: number
@@ -70,6 +89,7 @@ export type ReleaseMilestonePaymentResponse = {
     milestoneId: string
     amount: number
     status: string
+    failureReason?: string | null
     payoutReference: string | null
     releasedAt: string | null
   }

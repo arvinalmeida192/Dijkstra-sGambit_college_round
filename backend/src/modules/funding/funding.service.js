@@ -21,6 +21,7 @@ import {
   listMilestoneFundsForProject,
   markFundingFailed,
   markFundingPaid,
+  markMilestoneFundFailed,
   recordGatewayEvent,
   releaseMilestoneFund,
   toPublicFunding,
@@ -58,6 +59,27 @@ export function paiseToAppCents(paise) {
 }
 
 /**
+ * Processing fee calculation helper.
+ * Rate defaults to configured env.processingFeeRate (e.g. 0.02 = 2%).
+ * Uses explicit integer rounding (Math.round) in smallest currency units.
+ */
+export function calculateProcessingFee(amountCents, rate = env.processingFeeRate) {
+  if (typeof amountCents !== 'number' || !Number.isInteger(amountCents) || amountCents <= 0) {
+    throw badRequest('Invalid amount: must be a positive integer in cents.')
+  }
+  const numericRate = typeof rate === 'number' && !isNaN(rate) && rate >= 0 ? rate : 0.02
+  const feeAmountCents = Math.round(amountCents * numericRate)
+  const totalPayableCents = amountCents + feeAmountCents
+  return {
+    feeRate: numericRate,
+    feeAmountCents,
+    totalPayableCents,
+    feeAmountPaise: appCentsToPaise(feeAmountCents),
+    totalPayablePaise: appCentsToPaise(totalPayableCents),
+  }
+}
+
+/**
  * Signature verification helpers using timing-safe comparisons.
  */
 export function verifyPaymentSignature({ orderId, paymentId, signature, secret }) {
@@ -90,6 +112,13 @@ export function verifyWebhookSignature({ rawBody, signature, secret }) {
  * Factory for payout provider.
  */
 export function getPayoutProvider(mode = env.payoutMode) {
+  if (mode === 'failing_stub') {
+    return {
+      async createPayout() {
+        throw new Error('Simulated upstream gateway provider timeout')
+      },
+    }
+  }
   if (mode === 'razorpay_route') {
     return new RazorpayRoutePayoutProvider()
   }
@@ -173,6 +202,24 @@ export async function getFundingStatus(user, projectId) {
   const latestFunding = await findLatestFundingForProject(projectId)
   const milestoneFunds = await listMilestoneFundsForProject(projectId)
 
+  let feeEstimate = null
+  if (activeAgreement && !isFunded) {
+    const agreementMilestones = await withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `SELECT * FROM milestones WHERE project_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+        [projectId],
+      )
+      return rows
+    })
+    const projectAmountCents = agreementMilestones.reduce((sum, m) => sum + Number(m.amount), 0)
+    if (projectAmountCents > 0) {
+      feeEstimate = {
+        projectAmountCents,
+        ...calculateProcessingFee(projectAmountCents),
+      }
+    }
+  }
+
   return {
     enabled: true,
     keyId: env.razorpayKeyId || 'rzp_test_placeholder',
@@ -180,11 +227,14 @@ export async function getFundingStatus(user, projectId) {
     isFunded,
     funding: toPublicFunding(latestFunding),
     milestoneFunds: milestoneFunds.map(toPublicMilestoneFund),
+    feeEstimate,
     activeAgreement: activeAgreement
       ? {
           id: activeAgreement.id,
           version: activeAgreement.version,
           status: activeAgreement.status,
+          title: activeAgreement.title,
+          totalPayment: activeAgreement.total_payment,
         }
       : null,
     payoutMode: env.payoutMode,
@@ -230,7 +280,7 @@ export async function createOrder(user, projectId, input = {}) {
     throw conflict('Milestone amounts must be greater than zero.')
   }
 
-  const amountPaise = appCentsToPaise(totalAmountCents)
+  const feeCalc = calculateProcessingFee(totalAmountCents)
   const currency = input.currency || 'INR'
 
   return withTransaction(async (client) => {
@@ -241,16 +291,22 @@ export async function createOrder(user, projectId, input = {}) {
         clientId: user.id,
         amount: totalAmountCents,
         currency,
+        gatewayProvider: 'razorpay',
+        feeAmount: feeCalc.feeAmountCents,
+        totalPayable: feeCalc.totalPayableCents,
+        feeRate: feeCalc.feeRate,
+        feeStatus: 'ESTIMATED',
         metadata: {
           agreementVersion: activeAgreement.version,
           milestoneCount: milestoneFunds.length,
+          projectTitle: project.title,
         },
       },
       client,
     )
 
     const razorpayOrder = await orderGateway.createOrder({
-      amountPaise,
+      amountPaise: feeCalc.totalPayablePaise,
       currency,
       receipt: `rcpt_${funding.id.replace(/-/g, '').slice(0, 30)}`,
       keyId: env.razorpayKeyId || 'rzp_test_placeholder',
@@ -261,11 +317,18 @@ export async function createOrder(user, projectId, input = {}) {
 
     return {
       orderId: razorpayOrder.id,
-      amount: razorpayOrder.amount,
+      amount: razorpayOrder.amount, // in paise (total payable including fee)
+      amountPaise: feeCalc.totalPayablePaise,
+      amountCents: totalAmountCents,
+      feeAmountCents: feeCalc.feeAmountCents,
+      totalPayableCents: feeCalc.totalPayableCents,
+      feeRate: feeCalc.feeRate,
       currency: razorpayOrder.currency,
       keyId: env.razorpayKeyId || 'rzp_test_placeholder',
       fundingId: funding.id,
       totalAmountCents,
+      agreementVersion: activeAgreement.version,
+      projectTitle: project.title,
       milestones: milestoneFunds.map((m) => ({
         id: m.id,
         title: m.title,
@@ -413,17 +476,40 @@ export async function releaseMilestone(user, milestoneId, input = {}) {
       throw notFound('No held fund record found for this milestone.')
     }
 
-    if (fund.status !== 'HELD') {
+    // Allow release if HELD, or retry if previously FAILED
+    if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
       throw conflict(`Milestone funds are already ${fund.status.toLowerCase()}.`)
     }
 
     const payoutProvider = getPayoutProvider(env.payoutMode)
-    const payoutResult = await payoutProvider.createPayout({
-      fundId: fund.id,
-      milestoneId,
-      amount: Number(fund.amount),
-      currency: 'INR',
-    })
+    let payoutResult
+    try {
+      payoutResult = await payoutProvider.createPayout({
+        fundId: fund.id,
+        milestoneId,
+        amount: Number(fund.amount),
+        currency: 'INR',
+      })
+    } catch (err) {
+      // Record recoverable payout failure state
+      const failedFund = await markMilestoneFundFailed(
+        {
+          milestoneFundId: fund.id,
+          failureReason: err.message || 'Payout provider failure',
+          metadata: {
+            error: err.message,
+            notes: input.notes ?? null,
+            attemptedAt: new Date().toISOString(),
+          },
+        },
+        client,
+      )
+      return {
+        success: false,
+        milestoneFund: toPublicMilestoneFund(failedFund),
+        notice: `Payout failed: ${err.message}. State recorded as FAILED for retry.`,
+      }
+    }
 
     const updatedFund = await releaseMilestoneFund(
       {

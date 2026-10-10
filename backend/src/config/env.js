@@ -61,5 +61,6 @@ export const env = {
   razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
   razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
   payoutMode: process.env.PAYOUT_MODE ?? 'simulated',
+  processingFeeRate: Number(process.env.PROCESSING_FEE_RATE ?? 0.02), // default 2%
 }
 

@@ -190,7 +190,8 @@ export function FundingPage() {
 
   const enabled = fundingStatus?.enabled ?? false
   const isFunded = fundingStatus?.isFunded ?? false
-  const agreement = fundingStatus?.agreement
+  const agreement = fundingStatus?.activeAgreement
+  const feeEstimate = fundingStatus?.feeEstimate
   const milestoneFunds = fundingStatus?.milestoneFunds ?? []
   const fundingRecord = fundingStatus?.funding
 
@@ -214,8 +215,8 @@ export function FundingPage() {
       {/* Feature Flag Disabled Banner */}
       {!enabled && (
         <Alert tone="info">
-          Gateway sandbox funding is currently <strong>disabled</strong> on the server (
-          <code>GATEWAY_PAYMENTS_ENABLED=false</code>). Conventional milestones remain active.
+          Gateway payments feature is currently <strong>disabled</strong> on the server (
+          <code>GATEWAY_PAYMENTS_ENABLED=false</code>). Set <code>GATEWAY_PAYMENTS_ENABLED=true</code> and configure Razorpay test keys in backend <code>.env</code>.
         </Alert>
       )}
 
@@ -224,6 +225,7 @@ export function FundingPage() {
         <Alert tone="warning">
           <strong>Sandbox Test Mode:</strong> Uses Razorpay test credentials (UPI / NetBanking / Cards).
           Milestone payouts use <strong>Simulated Payouts</strong> (<code>SIM-PAYOUT-&lt;id&gt;</code>) for safe demonstration.
+          No real money is transferred to the freelancer.
         </Alert>
       )}
 
@@ -266,34 +268,74 @@ export function FundingPage() {
         </div>
 
         {agreement ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t-2 border-dark/10 font-mono text-xs">
-            <div>
-              <span className="text-dark/60 block uppercase">Agreement Version</span>
-              <span className="font-bold text-dark text-sm">v{agreement.version}</span>
-              <span className="text-dark/50 block truncate">{agreement.title}</span>
+          <div className="space-y-3 pt-3 border-t-2 border-dark/10">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono text-xs">
+              <div>
+                <span className="text-dark/60 block uppercase">Agreement Version</span>
+                <span className="font-bold text-dark text-sm">v{agreement.version}</span>
+                <span className="text-dark/50 block truncate">{agreement.title}</span>
+              </div>
+              <div>
+                <span className="text-dark/60 block uppercase">Project Amount</span>
+                <span className="font-bold text-dark text-sm">
+                  ₹{(agreement.totalPayment / 100).toFixed(2)}
+                </span>
+                <span className="text-dark/50 block">
+                  {agreement.totalPayment} cents
+                </span>
+              </div>
+              <div>
+                <span className="text-dark/60 block uppercase">Funding Record</span>
+                <span className="font-bold text-dark text-sm">
+                  {fundingRecord?.gatewayPaymentId || (isFunded ? 'Verified' : 'Pending')}
+                </span>
+                <span className="text-dark/50 block">
+                  {fundingRecord?.paidAt ? new Date(fundingRecord.paidAt).toLocaleString() : 'Not paid'}
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="text-dark/60 block uppercase">Total Required</span>
-              <span className="font-bold text-dark text-sm">
-                ₹{(agreement.totalPayment / 100).toFixed(2)}
-              </span>
-              <span className="text-dark/50 block">
-                {agreement.totalPayment} cents ({fundingStatus?.totalAmountPaise} paise)
-              </span>
-            </div>
-            <div>
-              <span className="text-dark/60 block uppercase">Funding Record</span>
-              <span className="font-bold text-dark text-sm">
-                {fundingRecord?.gatewayPaymentId || (isFunded ? 'Verified' : 'Pending')}
-              </span>
-              <span className="text-dark/50 block">
-                {fundingRecord?.paidAt ? new Date(fundingRecord.paidAt).toLocaleString() : 'Not paid'}
-              </span>
-            </div>
+
+            {/* Price & Processing Fee Breakdown */}
+            {!isFunded && feeEstimate && (
+              <div className="p-3 bg-dark/5 border border-dark/10 rounded font-mono text-xs space-y-1">
+                <div className="flex justify-between text-dark/70">
+                  <span>Agreed Project Deliverables:</span>
+                  <span>₹{(feeEstimate.projectAmountCents / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-dark/70">
+                  <span>Estimated Processing Fee ({(feeEstimate.feeRate * 100).toFixed(1)}% surcharge):</span>
+                  <span>+ ₹{(feeEstimate.feeAmountCents / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-dark text-sm pt-1 border-t border-dark/10">
+                  <span>Total Payable at Checkout:</span>
+                  <span>₹{(feeEstimate.totalPayableCents / 100).toFixed(2)}</span>
+                </div>
+                <p className="font-body text-[11px] text-dark/50 pt-1">
+                  * Note: The processing fee is paid on top by the client. The freelancer's agreed milestone compensation remains untouched.
+                </p>
+              </div>
+            )}
+
+            {isFunded && fundingRecord && (
+              <div className="p-3 bg-dark/5 border border-dark/10 rounded font-mono text-xs space-y-1">
+                <div className="flex justify-between text-dark/70">
+                  <span>Freelancer Allocated Amount:</span>
+                  <span>₹{(fundingRecord.amount / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-dark/70">
+                  <span>Processing Fee ({(fundingRecord.feeStatus || 'CONFIRMED').toLowerCase()}):</span>
+                  <span>₹{((fundingRecord.feeAmount ?? 0) / 100).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-dark text-sm pt-1 border-t border-dark/10">
+                  <span>Total Paid by Client:</span>
+                  <span>₹{((fundingRecord.totalPayable ?? fundingRecord.amount) / 100).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <p className="font-mono text-xs text-dark/60">
-            No active agreement found. Both parties must accept an agreement before funding.
+            No active agreement found. Both parties must accept the same agreement version before funding.
           </p>
         )}
 
@@ -305,7 +347,7 @@ export function FundingPage() {
                 Fund Milestone Escrow
               </h4>
               <p className="font-body text-xs text-dark/70 mt-0.5">
-                Lock the total agreement amount (₹{(agreement.totalPayment / 100).toFixed(2)}) via Razorpay Checkout test mode.
+                Pay ₹{feeEstimate ? (feeEstimate.totalPayableCents / 100).toFixed(2) : (agreement.totalPayment / 100).toFixed(2)} via Razorpay Checkout test mode.
               </p>
             </div>
             <Button
@@ -315,7 +357,9 @@ export function FundingPage() {
               onClick={handleCheckout}
             >
               <ShieldCheck className="w-4 h-4 mr-2" />
-              {checkoutLoading ? 'Opening Checkout...' : `Pay ₹${(agreement.totalPayment / 100).toFixed(2)} (Test Mode)`}
+              {checkoutLoading
+                ? 'Opening Checkout...'
+                : `Pay ₹${feeEstimate ? (feeEstimate.totalPayableCents / 100).toFixed(2) : (agreement.totalPayment / 100).toFixed(2)} (Test Mode)`}
             </Button>
           </div>
         )}
@@ -353,8 +397,9 @@ export function FundingPage() {
               const isApproved = fund.milestoneStatus === 'APPROVED'
               const isDisputed = fund.milestoneStatus === 'DISPUTED'
               const isHeld = fund.status === 'HELD'
+              const isFailed = fund.status === 'FAILED'
               const isReleased = fund.status === 'RELEASED'
-              const canRelease = isClient && isHeld && isApproved && !isDisputed
+              const canRelease = isClient && (isHeld || isFailed) && isApproved && !isDisputed
 
               return (
                 <Panel key={fund.id} tone="surface" shadow="sm" className="space-y-3">
@@ -373,7 +418,7 @@ export function FundingPage() {
                           tone={
                             isReleased
                               ? 'success'
-                              : isDisputed
+                              : isDisputed || isFailed
                               ? 'danger'
                               : isHeld
                               ? 'warning'
@@ -413,6 +458,11 @@ export function FundingPage() {
                           {new Date(fund.releasedAt).toLocaleString()}
                         </div>
                       )}
+                      {isFailed && fund.failureReason && (
+                        <div className="text-danger font-bold">
+                          Payout Failed: {fund.failureReason}
+                        </div>
+                      )}
                       {isDisputed && (
                         <div className="text-danger font-bold">
                           Disputed — Funds held until resolution.
@@ -434,7 +484,7 @@ export function FundingPage() {
                             })
                           }
                         >
-                          Release Funds →
+                          {isFailed ? 'Retry Release →' : 'Release Funds →'}
                         </Button>
                       )}
                       {isHeld && !isApproved && !isDisputed && (

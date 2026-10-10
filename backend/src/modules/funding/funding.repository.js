@@ -45,6 +45,10 @@ export async function insertFunding(
     currency = 'INR',
     gatewayProvider = 'razorpay',
     gatewayOrderId = null,
+    feeAmount = 0,
+    totalPayable = 0,
+    feeRate = 0,
+    feeStatus = 'ESTIMATED',
     metadata = {},
   },
   client,
@@ -52,8 +56,9 @@ export async function insertFunding(
   const { rows } = await db(client).query(
     `INSERT INTO project_funding (
        project_id, agreement_id, client_id, amount, currency,
-       gateway_provider, gateway_order_id, status, metadata
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8::jsonb)
+       gateway_provider, gateway_order_id, status,
+       fee_amount, total_payable, fee_rate, fee_status, metadata
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', $8, $9, $10, $11, $12::jsonb)
      RETURNING *`,
     [
       projectId,
@@ -63,6 +68,10 @@ export async function insertFunding(
       currency,
       gatewayProvider,
       gatewayOrderId,
+      feeAmount,
+      totalPayable,
+      feeRate,
+      feeStatus,
       JSON.stringify(metadata),
     ],
   )
@@ -192,9 +201,26 @@ export async function releaseMilestoneFund(
          payout_reference = $3,
          release_metadata = $4::jsonb,
          updated_at = NOW()
-     WHERE id = $1 AND status = 'HELD'
+     WHERE id = $1 AND (status = 'HELD' OR status = 'FAILED')
      RETURNING *`,
     [milestoneFundId, releasedBy, payoutReference, JSON.stringify(metadata)],
+  )
+  return rows[0] ?? null
+}
+
+export async function markMilestoneFundFailed(
+  { milestoneFundId, failureReason, metadata = {} },
+  client,
+) {
+  const { rows } = await db(client).query(
+    `UPDATE milestone_funds
+     SET status = 'FAILED',
+         failure_reason = $2,
+         release_metadata = $3::jsonb,
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'HELD'
+     RETURNING *`,
+    [milestoneFundId, failureReason, JSON.stringify(metadata)],
   )
   return rows[0] ?? null
 }
@@ -224,6 +250,10 @@ export function toPublicFunding(row) {
     amount: typeof row.amount === 'string' ? Number(row.amount) : row.amount,
     currency: row.currency,
     status: row.status,
+    feeAmount: typeof row.fee_amount === 'string' ? Number(row.fee_amount) : Number(row.fee_amount ?? 0),
+    totalPayable: typeof row.total_payable === 'string' ? Number(row.total_payable) : Number(row.total_payable ?? row.amount),
+    feeRate: typeof row.fee_rate === 'string' ? Number(row.fee_rate) : Number(row.fee_rate ?? 0),
+    feeStatus: row.fee_status ?? 'ESTIMATED',
     gatewayProvider: row.gateway_provider,
     gatewayOrderId: row.gateway_order_id ?? null,
     gatewayPaymentId: row.gateway_payment_id ?? null,
@@ -246,6 +276,7 @@ export function toPublicMilestoneFund(row) {
     sortOrder: row.sort_order ?? 0,
     amount: typeof row.amount === 'string' ? Number(row.amount) : row.amount,
     status: row.status,
+    failureReason: row.failure_reason ?? null,
     payoutReference: row.payout_reference ?? null,
     releasedAt: row.released_at?.toISOString?.() ?? row.released_at ?? null,
     releasedBy: row.released_by ?? null,
