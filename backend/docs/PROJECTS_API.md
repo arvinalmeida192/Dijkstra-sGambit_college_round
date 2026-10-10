@@ -51,7 +51,7 @@ Body (optional): `{ "email": "freelancer@example.com" }`
 ```json
 {
   "invitation": { "id": "...", "token": "...", "status": "PENDING", "expiresAt": "..." },
-  "invitePath": "/register?invite=<token>",
+  "invitePath": "/invite/<token>",
   "note": "External project URLs are references only — Fairwork does not control external platforms."
 }
 ```

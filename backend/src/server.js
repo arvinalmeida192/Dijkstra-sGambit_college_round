@@ -12,6 +12,7 @@ async function main() {
     console.log(`Health: GET /health`)
     console.log(`Auth:   POST /api/v1/auth/register | /login | GET /me`)
     console.log(`Projects: /api/v1/projects | /api/v1/invitations/:token`)
+    console.log(`Agreements: /api/v1/projects/:id/agreements | /api/v1/agreements/:id`)
   })
 }
 

@@ -37,7 +37,7 @@ export function HomePage() {
             <Link
               to={
                 invite
-                  ? `${routes.register}?invite=${encodeURIComponent(invite)}`
+                  ? routes.invite(invite)
                   : routes.register
               }
             >
@@ -50,8 +50,14 @@ export function HomePage() {
       {invite ? (
         <PageContainer variant="marketing" className="pt-4">
           <Alert tone="info">
-            Invitation detected ({invite}). Create an account to join the project —
-            invitation acceptance wires up in later phases.
+            You have a project invitation.{' '}
+            <Link
+              to={routes.invite(invite)}
+              className="font-bold text-accent hover:underline"
+            >
+              Review and accept it here
+            </Link>
+            .
           </Alert>
         </PageContainer>
       ) : null}

@@ -113,7 +113,7 @@ export async function createInvitation(user, projectId, input) {
   return {
     invitation: toPublicInvitation(invitation),
     // Frontend builds the absolute URL; this is the shareable path fragment.
-    invitePath: `/register?invite=${invitation.token}`,
+    invitePath: `/invite/${invitation.token}`,
     note: 'External project URLs are references only — Fairwork does not control external platforms.',
   }
 }

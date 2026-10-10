@@ -6,6 +6,7 @@ import { AgreementPage } from './pages/AgreementPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DisputesPage } from './pages/DisputesPage'
 import { HomePage } from './pages/HomePage'
+import { InvitePage } from './pages/InvitePage'
 import { LoginPage } from './pages/LoginPage'
 import { NewProjectPage } from './pages/NewProjectPage'
 import { PaymentsPage } from './pages/PaymentsPage'
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/dev/ui" element={<UiDemoPage />} />
 
           <Route element={<RequireAuth />}>

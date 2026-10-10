@@ -3,6 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { env } from './config/env.js'
 import { authRouter } from './modules/auth/auth.routes.js'
+import { agreementsRouter } from './modules/agreements/agreement.routes.js'
 import {
   invitationsRouter,
   projectsRouter,
@@ -28,6 +29,7 @@ export function createApp() {
   app.use('/api/v1/auth', authRouter)
   app.use('/api/v1/projects', projectsRouter)
   app.use('/api/v1/invitations', invitationsRouter)
+  app.use('/api/v1/agreements', agreementsRouter)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
