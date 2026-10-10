@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { AuthLayout } from '../components/layout/AuthLayout'
@@ -14,8 +14,11 @@ export function LoginPage() {
   const { login, status } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [params] = useSearchParams()
+  const invite = params.get('invite')?.trim() ?? ''
   const from =
     (location.state as { from?: string } | null)?.from ?? routes.dashboard
+  const afterAuth = invite ? routes.invite(invite) : from
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,7 +27,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
 
   if (status === 'authenticated') {
-    return <Navigate to={from} replace />
+    return <Navigate to={afterAuth} replace />
   }
 
   async function onSubmit(event: FormEvent) {
@@ -38,7 +41,7 @@ export function LoginPage() {
     setLoading(true)
     try {
       await login({ email: email.trim(), password })
-      navigate(from, { replace: true })
+      navigate(afterAuth, { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setFormError(err.message)
@@ -50,6 +53,10 @@ export function LoginPage() {
     }
   }
 
+  const registerHref = invite
+    ? `${routes.register}?invite=${encodeURIComponent(invite)}`
+    : routes.register
+
   return (
     <AuthLayout
       title="Access Agreements"
@@ -59,7 +66,13 @@ export function LoginPage() {
         <Alert tone="warning" className="mb-6" role="status">
           Set <code className="font-bold">VITE_API_BASE_URL</code> (see{' '}
           <code className="font-bold">frontend/.env.example</code>) so this form
-          can reach the Phase 07 auth API.
+          can reach the auth API.
+        </Alert>
+      ) : null}
+
+      {invite ? (
+        <Alert tone="info" className="mb-6" role="status">
+          Sign in to accept your project invitation.
         </Alert>
       ) : null}
 
@@ -106,7 +119,7 @@ export function LoginPage() {
 
       <p className="mt-8 pt-4 border-t border-dark/15 font-mono text-xs text-dark/60">
         No account?{' '}
-        <Link to={routes.register} className="text-accent font-bold hover:underline">
+        <Link to={registerHref} className="text-accent font-bold hover:underline">
           Create one
         </Link>
       </p>

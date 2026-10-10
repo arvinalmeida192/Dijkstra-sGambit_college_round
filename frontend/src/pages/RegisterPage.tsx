@@ -33,7 +33,12 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false)
 
   if (status === 'authenticated') {
-    return <Navigate to={routes.dashboard} replace />
+    return (
+      <Navigate
+        to={invite ? routes.invite(invite) : routes.dashboard}
+        replace
+      />
+    )
   }
 
   async function onSubmit(event: FormEvent) {
@@ -58,7 +63,9 @@ export function RegisterPage() {
         password,
         role,
       })
-      navigate(routes.dashboard, { replace: true })
+      navigate(invite ? routes.invite(invite) : routes.dashboard, {
+        replace: true,
+      })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setFormError(err.message)
@@ -69,6 +76,10 @@ export function RegisterPage() {
       setLoading(false)
     }
   }
+
+  const loginHref = invite
+    ? `${routes.login}?invite=${encodeURIComponent(invite)}`
+    : routes.login
 
   return (
     <AuthLayout
@@ -100,14 +111,14 @@ export function RegisterPage() {
         <Alert tone="warning" className="mb-6" role="status">
           Set <code className="font-bold">VITE_API_BASE_URL</code> (see{' '}
           <code className="font-bold">frontend/.env.example</code>) so this form
-          can reach the Phase 07 auth API.
+          can reach the auth API.
         </Alert>
       ) : null}
 
       {invite ? (
         <Alert tone="info" className="mb-6" role="status">
-          Joining via invitation: <span className="font-bold">{invite}</span>. Full
-          invitation acceptance lands in later phases.
+          You have a project invitation. Register as a freelancer, then accept
+          the invite on the next screen.
         </Alert>
       ) : null}
 
@@ -118,8 +129,13 @@ export function RegisterPage() {
             options={roleOptions}
             value={role}
             onChange={(value) => setRole(value as UserRole)}
-            disabled={loading}
+            disabled={loading || Boolean(invite)}
           />
+          {invite ? (
+            <p className="mt-1 font-mono text-[11px] text-dark/50">
+              Invitation flow requires a freelancer account.
+            </p>
+          ) : null}
           {fieldErrors.role ? (
             <p className="mt-1 font-mono text-[11px] text-status-danger" role="alert">
               {fieldErrors.role}
@@ -192,7 +208,7 @@ export function RegisterPage() {
 
       <p className="mt-8 pt-4 border-t border-dark/15 font-mono text-xs text-dark/60">
         Already registered?{' '}
-        <Link to={routes.login} className="text-accent font-bold hover:underline">
+        <Link to={loginHref} className="text-accent font-bold hover:underline">
           Sign in
         </Link>
       </p>
