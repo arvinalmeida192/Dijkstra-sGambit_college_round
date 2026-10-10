@@ -15,6 +15,10 @@ import { Modal } from '../components/ui/Modal'
 import { formatAmountBaseUnits } from '../lib/agreementStatus'
 import { ApiError, isApiConfigured } from '../lib/api/client'
 import {
+  ACTIVITY_PAGE_SIZE,
+  ActivityTimeline,
+} from '../components/activity/ActivityTimeline'
+import {
   listMilestones,
   listProjectAuditLogs,
   type AuditLog,
@@ -100,6 +104,9 @@ export function PaymentsPage() {
   const [fundingStatus, setFundingStatus] = useState<FundingStatusResponse | null>(null)
   const [payments, setPayments] = useState<Payment[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditLoadingMore, setAuditLoadingMore] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -148,13 +155,18 @@ export function PaymentsPage() {
           listMilestones(token, projectId),
           getFundingStatus(token, projectId).catch(() => null),
           listProjectPayments(token, projectId).catch(() => ({ payments: [] })),
-          listProjectAuditLogs(token, projectId).catch(() => ({ auditLogs: [] })),
+          listProjectAuditLogs(token, projectId, {
+            limit: ACTIVITY_PAGE_SIZE,
+            offset: 0,
+          }).catch(() => ({ auditLogs: [], pagination: { limit: ACTIVITY_PAGE_SIZE, offset: 0, total: 0 } })),
         ])
       setProject(projectResult.project)
       setMilestones(milestonesResult.milestones)
       setFundingStatus(fundingResult)
       setPayments(paymentsResult.payments)
       setAuditLogs(auditResult.auditLogs)
+      setAuditTotal(auditResult.pagination?.total ?? auditResult.auditLogs.length)
+      setAuditError(null)
       setMilestoneId((current) =>
         current || milestonesResult.milestones[0]?.id || '',
       )
@@ -164,6 +176,7 @@ export function PaymentsPage() {
       setFundingStatus(null)
       setPayments([])
       setAuditLogs([])
+      setAuditTotal(0)
       setError(
         err instanceof ApiError
           ? err.message
@@ -177,6 +190,33 @@ export function PaymentsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadMoreAudit = useCallback(async () => {
+    if (!token || !projectId || auditLoadingMore) return
+    if (auditLogs.length >= auditTotal) return
+    setAuditLoadingMore(true)
+    setAuditError(null)
+    try {
+      const result = await listProjectAuditLogs(token, projectId, {
+        limit: ACTIVITY_PAGE_SIZE,
+        offset: auditLogs.length,
+      })
+      setAuditLogs((prev) => {
+        const seen = new Set(prev.map((item) => item.id))
+        const next = result.auditLogs.filter((item) => !seen.has(item.id))
+        return [...prev, ...next]
+      })
+      setAuditTotal(result.pagination?.total ?? auditTotal)
+    } catch (err) {
+      setAuditError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not load more activity.',
+      )
+    } finally {
+      setAuditLoadingMore(false)
+    }
+  }, [token, projectId, auditLogs.length, auditTotal, auditLoadingMore])
 
   async function handleCheckout() {
     if (!token || !projectId) return
@@ -779,44 +819,19 @@ export function PaymentsPage() {
 
           <Panel className="space-y-3">
             <h2 className="font-display text-lg text-dark">
-              Protection activity
+              Activity timeline
             </h2>
             <p className="font-body text-sm text-dark/70">
-              Auditable protection events (extensions, overdue, auto-approval,
-              reclaim, releases). Actor may be a participant or system.
+              Auditable project events (funding, releases, protection, disputes).
+              Collapsed rows show summary, time, and actor only.
             </p>
-            {auditLogs.length === 0 ? (
-              <p className="font-mono text-[11px] text-dark/50">
-                No protection audit entries yet.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {auditLogs.map((log) => (
-                  <li
-                    key={log.id}
-                    className="border-2 border-dark/10 bg-white/60 p-3 space-y-1"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">{log.action}</Badge>
-                      <span className="font-mono text-[10px] text-dark/50">
-                        {formatDate(log.createdAt)}
-                      </span>
-                    </div>
-                    <p className="font-mono text-[11px] text-dark/70">
-                      Actor: {log.actor}
-                      {log.milestoneId
-                        ? ` · milestone ${log.milestoneId.slice(0, 8)}`
-                        : ''}
-                    </p>
-                    {log.metadata && Object.keys(log.metadata).length > 0 ? (
-                      <p className="font-mono text-[10px] text-dark/45 break-all">
-                        {JSON.stringify(log.metadata)}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ActivityTimeline
+              items={auditLogs}
+              loadingMore={auditLoadingMore}
+              error={auditError}
+              total={auditTotal}
+              onLoadMore={() => void loadMoreAudit()}
+            />
           </Panel>
         </>
       )}

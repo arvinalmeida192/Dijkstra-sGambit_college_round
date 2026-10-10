@@ -4,7 +4,9 @@ import {
   assertUuid,
   cancelAndReclaimSchema,
   createMilestoneSchema,
+  listAuditLogsQuerySchema,
   parseBody,
+  parseQuery,
   proposeExtensionSchema,
   respondExtensionSchema,
   updateMilestoneSchema,
@@ -123,9 +125,11 @@ export const executeReclaim = asyncHandler(async (req, res) => {
 
 export const listAuditLogsForProject = asyncHandler(async (req, res) => {
   assertUuid(req.params.id, 'project id')
+  const query = parseQuery(listAuditLogsQuerySchema, req.query)
   const result = await milestoneService.listProjectAuditLogs(
     req.user,
     req.params.id,
+    query,
   )
   res.status(200).json(result)
 })
