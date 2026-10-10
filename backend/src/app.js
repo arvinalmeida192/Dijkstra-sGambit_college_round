@@ -9,6 +9,7 @@ import {
   invitationsRouter,
   projectsRouter,
 } from './modules/projects/project.routes.js'
+import { submissionsRouter } from './modules/submissions/submission.routes.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
   app.use('/api/v1/invitations', invitationsRouter)
   app.use('/api/v1/agreements', agreementsRouter)
   app.use('/api/v1/milestones', milestonesRouter)
+  app.use('/api/v1/submissions', submissionsRouter)
 
   app.use(notFoundHandler)
   app.use(errorHandler)
