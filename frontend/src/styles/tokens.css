@@ -1,0 +1,23 @@
+@theme {
+  --color-base: #efede8;
+  --color-surface: #f6f5f2;
+  --color-dark: #0b0b0b;
+  --color-darker: #050505;
+  --color-accent: #ff5a1f;
+  --color-accent-hover: #e04a12;
+  --color-status-success: #1fd655;
+  --color-status-warning: #ffb020;
+  --color-status-danger: #f43f5e;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: Inter, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --shadow-brutal: 4px 4px 0px #0b0b0b;
+  --shadow-brutal-lg: 8px 8px 0px #0b0b0b;
+  --shadow-brutal-orange: 6px 6px 0px #ff5a1f;
+
+  --radius-none: 0px;
+  --spacing-content-max: 1720px;
+  --spacing-content-app: 1200px;
+}

@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAIRWORK — Get Paid for What You Deliver</title>
+  
+  <!-- Fonts: Space Grotesk, Inter, JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- GSAP & ScrollTrigger CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#EFEDE8',
+            surface: '#F6F5F2',
+            dark: '#0B0B0B',
+            darker: '#050505',
+            accent: '#FF5A1F',
+            'accent-hover': '#E04A12',
+            'status-green': '#1FD655',
+            'status-amber': '#FFB020',
+            'status-red': '#F43F5E',
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          boxShadow: {
+            'brutal': '4px 4px 0px #0B0B0B',
+            'brutal-lg': '8px 8px 0px #0B0B0B',
+            'brutal-orange': '6px 6px 0px #FF5A1F',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Paper Grain & Grid Overlay */
+    :root {
+      --grid-size: 40px;
+    }
+
+    body {
+      background-color: #EFEDE8;
+      color: #0B0B0B;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+      cursor: default;
+    }
+
+    /* Subtle Technical Grid Lines */
+    .bg-tech-grid {
+      background-image: 
+        linear-gradient(to right, rgba(11, 11, 11, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(11, 11, 11, 0.05) 1px, transparent 1px);
+      background-size: var(--grid-size) var(--grid-size);
+    }
+
+    .bg-tech-grid-dark {
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+      background-size: var(--grid-size) var(--grid-size);
+    }
+
+    /* Custom Crosshair & Markers */
+    .crosshair-corner {
+      position: relative;
+    }
+    .crosshair-corner::before {
+      content: '+';
+      position: absolute;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1;
+      color: #0B0B0B;
+      opacity: 0.45;
+    }
+
+    /* Stepped Pixel Button Fill */
+    .btn-pixel-fill {
+      position: relative;
+      overflow: hidden;
+      transition: color 0.15s ease-out;
+    }
+    .btn-pixel-fill::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: #FF5A1F;
+      transition: transform 0.25s steps(6);
+      z-index: 0;
+    }
+    .btn-pixel-fill:hover::before {
+      transform: translateX(100%);
+    }
+
+    /* Custom Interactive Cursor */
+    #custom-cursor {
+      pointer-events: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), height 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-radius 0.15s ease;
+    }
+
+    /* Marquee Track Animation */
+    @keyframes marquee {
+      0% { transform: translateX(0%); }
+      100% { transform: translateX(-50%); }
+    }
+    .animate-marquee {
+      display: flex;
+      width: 200%;
+      animation: marquee 22s linear infinite;
+    }
+    .animate-marquee:hover {
+      animation-play-state: paused;
+    }
+
+    /* Mono scanlines effect */
+    .scanlines {
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      background-size: 100% 3px, 6px 100%;
+    }
+
+    /* Horizontal Scroll Section Track */
+    .cards-horizontal-wrapper {
+      display: flex;
+      gap: 2rem;
+      width: 400%;
+    }
+
+    /* Hide scrollbar for clean brutalist aesthetic */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #EFEDE8;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0B0B0B;
+    }
+  </style>
+</head>
+<body class="selection:bg-accent selection:text-white bg-base relative">
+
+  <!-- ==================== SIGNATURE PIXEL INTRO / REVEAL CANVAS ==================== -->
+  <canvas id="pixel-reveal-canvas" class="fixed inset-0 w-full h-full z-[10000] pointer-events-none"></canvas>
+
+  <!-- ==================== BESPOKE SNAPPING CURSOR ==================== -->
+  <div id="custom-cursor" class="w-3.5 h-3.5 bg-accent border border-dark flex items-center justify-center text-[9px] font-mono font-bold text-white uppercase tracking-wider overflow-hidden">
+    <span id="cursor-label" class="opacity-0 transition-opacity duration-150"></span>
+  </div>
+
+  <!-- ==================== TOP NAVIGATION / SYSTEM BAR ==================== -->
+  <header class="sticky top-0 z-50 bg-base/90 backdrop-blur-md border-b-2 border-dark">
+    <div class="max-w-[1720px] mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
+      <!-- Left: Brand & Status -->
+      <div class="flex items-center gap-6">
+        <a href="#hero" class="flex items-center gap-3 group">
+          <div class="w-6 h-6 bg-accent border-2 border-dark flex items-center justify-center transform group-hover:rotate-90 transition-transform duration-300">
+            <div class="w-2 h-2 bg-dark"></div>
+          </div>
+          <span class="font-display font-extrabold text-2xl tracking-tighter text-dark uppercase">Fairwork</span>
+        </a>
+        <div class="hidden lg:flex items-center gap-2 border-l-2 border-dark/20 pl-6 text-xs font-mono">
+          <span class="inline-block w-2 h-2 bg-status-green rounded-none animate-ping"></span>
+          <span class="text-dark/70">MAINNET ACTIVE // PROTOCOL V2.6.4</span>
+        </div>
+      </div>
+
+      <!-- Center: Nav Anchors -->
+      <nav class="hidden md:flex items-center gap-8 font-mono text-xs uppercase tracking-wider font-semibold">
+        <a href="#the-problem" class="hover:text-accent transition-colors flex items-center gap-1 group" data-cursor="VIEW">
+          <span class="text-dark/40 group-hover:text-accent">01/</span> The Problem
+        </a>
+        <a href="#how-it-works" class="hover:text-accent transition-colors flex items-center gap-1 group" data-cursor="FLOW">
+          <span class="text-dark/40 group-hover:text-accent">02/</span> Workflow
+        </a>
+        <a href="#features" class="hover:text-accent transition-colors flex items-center gap-1 group" data-cursor="SPECS">
+          <span class="text-dark/40 group-hover:text-accent">03/</span> Features
+        </a>
+        <a href="#live-tracker" class="hover:text-accent transition-colors flex items-center gap-1 group" data-cursor="AUDIT">
+          <span class="text-dark/40 group-hover:text-accent">04/</span> Live Escrow
+        </a>
+        <a href="#dispute-flow" class="hover:text-accent transition-colors flex items-center gap-1 group" data-cursor="RESOLVE">
+          <span class="text-dark/40 group-hover:text-accent">05/</span> Dispute Logic
+        </a>
+      </nav>
+
+      <!-- Right: Action CTA & Login Portal Trigger -->
+      <div class="flex items-center gap-3">
+        <button id="nav-login-btn" class="px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider border-2 border-dark hover:bg-dark hover:text-base transition-colors" data-cursor="AUTH">
+          Login / Portal
+        </button>
+        <button onclick="scrollToElement('#live-tracker')" class="relative px-5 py-2 text-xs font-mono font-bold uppercase tracking-wider bg-accent text-white border-2 border-dark shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all" data-cursor="START">
+          Start Agreement
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== SECTION 1: HERO (DEVICE FRAME ARCHITECTURE) ==================== -->
+  <section id="hero" class="relative pt-6 pb-16 px-4 md:px-8 bg-tech-grid">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <!-- Framing Device / Canvas Enclosure -->
+      <div class="relative bg-surface border-2 border-dark shadow-brutal-lg rounded-2xl md:rounded-3xl overflow-hidden p-6 md:p-12">
+        
+        <!-- Frame Technical Header Details -->
+        <div class="flex flex-wrap items-center justify-between pb-8 border-b-2 border-dark/15 mb-10 gap-4 font-mono text-xs">
+          <div class="flex items-center gap-4">
+            <span class="px-2.5 py-1 bg-dark text-white font-bold">AGREEMENTS / 2026</span>
+            <span class="text-dark/60 tracking-wider">LAT: 37.7749° N / PROTOCOL: ETH-ESCROW</span>
+          </div>
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 bg-status-green"></span>
+              <span class="font-bold text-dark">ESCROW POOL: $14,892,100 USDC</span>
+            </div>
+            <span class="font-bold text-accent">[INDEX 01/05]</span>
+          </div>
+        </div>
+
+        <!-- Vertical Decorative Spine Badge (Desktop only) -->
+        <div class="hidden xl:flex absolute left-4 top-1/2 -translate-y-1/2 -rotate-90 origin-left font-mono text-[10px] tracking-[0.3em] uppercase text-dark/40 border-b border-dark/20 pb-1">
+          DECISION REPOSITORY // ZERO ARBITRARY DISCRETION
+        </div>
+
+        <!-- Hero Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center pl-0 xl:pl-8">
+          
+          <!-- Hero Typography & CTAs (Left Column - 7 cols) -->
+          <div class="lg:col-span-7 flex flex-col justify-center">
+            
+            <div class="inline-flex items-center gap-2 font-mono text-xs font-bold text-accent uppercase mb-4 tracking-widest">
+              <span class="w-2 h-2 bg-accent"></span>
+              Decentralized Milestone Architecture
+            </div>
+
+            <h1 class="font-display font-black text-5xl sm:text-7xl md:text-8xl lg:text-[7.2vw] leading-[0.88] uppercase tracking-tighter text-dark mb-8">
+              <span class="block overflow-hidden"><span class="inline-block hero-word">GET PAID</span></span>
+              <span class="block overflow-hidden"><span class="inline-block hero-word text-accent">FOR WHAT</span></span>
+              <span class="block overflow-hidden"><span class="inline-block hero-word">YOU DELIVER</span></span>
+            </h1>
+
+            <p class="font-body text-base md:text-xl text-dark/80 max-w-xl mb-10 leading-relaxed">
+              No more client ghosting. No more scope creep without payment. Fairwork locks client funds in auditable smart-escrow contracts, releasing capital only when predetermined milestone conditions are verified.
+            </p>
+
+            <!-- Hero Interactive Buttons -->
+            <div class="flex flex-wrap items-center gap-4">
+              <button onclick="openAgreementModal()" class="px-8 py-4 bg-accent text-white font-mono text-sm font-bold uppercase tracking-wider border-2 border-dark shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-3 group" data-cursor="LAUNCH">
+                <span>Start an Agreement</span>
+                <i data-lucide="arrow-up-right" class="w-5 h-5 group-hover:rotate-45 transition-transform"></i>
+              </button>
+              
+              <a href="#how-it-works" class="px-8 py-4 bg-white text-dark font-mono text-sm font-bold uppercase tracking-wider border-2 border-dark hover:bg-dark hover:text-white transition-colors flex items-center gap-2" data-cursor="LEARN">
+                <span>See how it works</span>
+                <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+              </a>
+            </div>
+
+            <!-- Coordinate stamps & Barcode -->
+            <div class="mt-12 pt-8 border-t border-dark/15 flex flex-wrap items-center gap-8 font-mono text-[11px] text-dark/60">
+              <div class="flex items-center gap-2">
+                <i data-lucide="shield-check" class="w-4 h-4 text-status-green"></i>
+                <span>NON-CUSTODIAL MULTISIG</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <i data-lucide="code" class="w-4 h-4 text-accent"></i>
+                <span>EVM & SOLANA COMPLIANT</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold tracking-widest text-dark">||| | || |||| | | |||</span>
+                <span>FW-CONTRACT-8819X</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hero Right: Live Stacked Interactive Milestone Cards (5 cols) -->
+          <div class="lg:col-span-5 relative">
+            <div class="bg-base border-2 border-dark p-6 shadow-brutal relative">
+              
+              <div class="flex items-center justify-between pb-4 border-b-2 border-dark mb-5 font-mono text-xs">
+                <span class="font-bold uppercase tracking-wider">Live Agreement Sample</span>
+                <span class="text-accent font-bold">#FW-9021-USDC</span>
+              </div>
+
+              <!-- Interactive Milestone Stack -->
+              <div class="space-y-4" id="hero-milestones">
+                
+                <!-- Milestone 1: Released -->
+                <div class="p-4 bg-white border-2 border-dark transition-all duration-200 hover:-translate-y-1 shadow-sm">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="font-mono text-xs text-dark/50 font-bold">M1 // FOUNDATION & IA</span>
+                    <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-status-green/20 text-dark border border-status-green flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 bg-status-green"></span> Released
+                    </span>
+                  </div>
+                  <div class="flex items-baseline justify-between">
+                    <h4 class="font-display font-bold text-lg text-dark">System Architecture v1.0</h4>
+                    <span class="font-mono font-bold text-lg text-dark">$4,500 <span class="text-xs text-dark/50">USDC</span></span>
+                  </div>
+                  <div class="mt-2 text-xs font-mono text-dark/60 flex items-center justify-between pt-2 border-t border-dark/10">
+                    <span>Approved by 0x8F3...9C1</span>
+                    <span class="text-status-green font-bold">✓ Complete</span>
+                  </div>
+                </div>
+
+                <!-- Milestone 2: In Review -->
+                <div class="p-4 bg-white border-2 border-accent transition-all duration-200 hover:-translate-y-1 shadow-sm relative">
+                  <div class="absolute -top-2.5 right-4 px-2 py-0.5 bg-accent text-white font-mono text-[9px] font-bold tracking-widest uppercase">
+                    ACTIVE ACTION
+                  </div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="font-mono text-xs text-accent font-bold">M2 // FULL DESIGN SYSTEM</span>
+                    <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-status-amber/20 text-dark border border-status-amber flex items-center gap-1.5">
+                      <span class="w-1.5 h-1.5 bg-status-amber animate-pulse"></span> In Review
+                    </span>
+                  </div>
+                  <div class="flex items-baseline justify-between">
+                    <h4 class="font-display font-bold text-lg text-dark">Interactive High-Fidelity UI</h4>
+                    <span class="font-mono font-bold text-lg text-accent">$7,200 <span class="text-xs text-dark/50">USDC</span></span>
+                  </div>
+                  <div class="mt-3 flex items-center gap-2">
+                    <button onclick="simulateReleaseM2()" id="btn-release-m2" class="w-full py-1.5 bg-dark text-white font-mono text-xs font-bold uppercase hover:bg-accent hover:border-dark transition-colors flex items-center justify-center gap-1.5" data-cursor="PAY">
+                      <i data-lucide="unlock" class="w-3.5 h-3.5"></i> Release Milestone Funds
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Milestone 3: Locked in Escrow -->
+                <div class="p-4 bg-dark/5 border-2 border-dashed border-dark/40 transition-all opacity-85">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="font-mono text-xs text-dark/50 font-bold">M3 // SMART CONTRACT DEPLOY</span>
+                    <span class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-dark/10 text-dark/70 border border-dark/30 flex items-center gap-1.5">
+                      <i data-lucide="lock" class="w-2.5 h-2.5"></i> Locked in Escrow
+                    </span>
+                  </div>
+                  <div class="flex items-baseline justify-between">
+                    <h4 class="font-display font-bold text-lg text-dark/70">Mainnet Protocol Validation</h4>
+                    <span class="font-mono font-bold text-lg text-dark/70">$5,800 <span class="text-xs text-dark/50">USDC</span></span>
+                  </div>
+                  <div class="mt-2 text-xs font-mono text-dark/50 flex items-center justify-between pt-2 border-t border-dark/10">
+                    <span>Funds deposited & verified</span>
+                    <span>Pending M2 release</span>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Contract Footer Summary -->
+              <div class="mt-6 pt-4 border-t-2 border-dark flex items-center justify-between font-mono text-xs">
+                <div>
+                  <span class="text-dark/50 block text-[10px]">TOTAL ESCROW COMMITTED</span>
+                  <span class="font-bold text-base text-dark">$17,500.00 USDC</span>
+                </div>
+                <div class="text-right">
+                  <span class="text-dark/50 block text-[10px]">SECURITY LEVEL</span>
+                  <span class="font-bold text-status-green flex items-center gap-1 justify-end">
+                    <span class="w-1.5 h-1.5 bg-status-green"></span> TRIPLE ENCLAVE
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Hero Bottom Marquee Strip -->
+        <div class="mt-12 -mx-6 md:-mx-12 -mb-6 md:-mb-12 bg-dark text-white py-3 border-t-2 border-dark overflow-hidden flex items-center">
+          <div class="animate-marquee font-mono text-xs font-bold uppercase tracking-widest flex items-center whitespace-nowrap">
+            <span class="mx-6">★ BUILT ON VERIFIABLE SMART CONTRACTS</span>
+            <span class="mx-6 text-accent">■ ZERO UNPAID INVOICES</span>
+            <span class="mx-6">★ INSTANT USDC & ETH SETTLEMENTS</span>
+            <span class="mx-6 text-status-green">■ NON-CUSTODIAL ESCROW POOLS</span>
+            <span class="mx-6">★ AUTOMATED REJECTION DISPUTE COURTS</span>
+            <span class="mx-6 text-accent">■ 100% AUDITABLE CRYPTOGRAPHIC DECISIONS</span>
+            <span class="mx-6">★ BUILT ON VERIFIABLE SMART CONTRACTS</span>
+            <span class="mx-6 text-accent">■ ZERO UNPAID INVOICES</span>
+            <span class="mx-6">★ INSTANT USDC & ETH SETTLEMENTS</span>
+            <span class="mx-6 text-status-green">■ NON-CUSTODIAL ESCROW POOLS</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 2: MANIFESTO MARQUEE ==================== -->
+  <section class="bg-accent text-white border-y-2 border-dark py-5 overflow-hidden">
+    <div class="animate-marquee font-display font-black text-2xl md:text-4xl tracking-tight uppercase flex items-center whitespace-nowrap">
+      <span class="mx-8">MILESTONES</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">SMART CONTRACTS</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">VERIFIED DELIVERY</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">FAIR DISPUTES</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">ZERO INTERMEDIARY FEES</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">MILESTONES</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">SMART CONTRACTS</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">VERIFIED DELIVERY</span>
+      <span class="text-dark">✦</span>
+      <span class="mx-8">FAIR DISPUTES</span>
+      <span class="text-dark">✦</span>
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 3: THE PROBLEM (PIXEL DISSOLVE STATEMENTS) ==================== -->
+  <section id="the-problem" class="py-24 px-4 md:px-8 bg-dark text-base border-b-2 border-dark relative overflow-hidden">
+    
+    <!-- Background Tech Grid Dark -->
+    <div class="absolute inset-0 bg-tech-grid-dark pointer-events-none opacity-40"></div>
+    
+    <div class="max-w-[1720px] mx-auto relative z-10">
+      
+      <div class="flex flex-wrap items-center justify-between pb-6 border-b border-white/20 mb-16 font-mono text-xs">
+        <div class="flex items-center gap-3">
+          <span class="w-3 h-3 bg-status-red"></span>
+          <span class="tracking-widest uppercase font-bold text-white/70">EXPOSURE AUDIT // THE BROKEN STATUS QUO</span>
+        </div>
+        <div class="text-white/40">SECTION [02/05]</div>
+      </div>
+
+      <!-- Problem Statements Container -->
+      <div class="space-y-16 lg:space-y-28">
+        
+        <!-- Statement 01 -->
+        <div class="problem-card group grid grid-cols-1 lg:grid-cols-12 gap-8 items-start p-8 md:p-12 border-2 border-white/20 bg-darker transition-all duration-300 hover:border-accent">
+          <div class="lg:col-span-3">
+            <span class="font-mono text-6xl md:text-8xl font-black text-status-red block">01</span>
+            <span class="font-mono text-xs tracking-widest text-white/50 uppercase mt-2 block">VULNERABILITY: TALENT</span>
+          </div>
+          <div class="lg:col-span-9">
+            <h3 class="font-display font-extrabold text-3xl md:text-5xl lg:text-6xl text-white uppercase leading-[1.05] tracking-tight mb-6">
+              Freelancers risk unpaid work, perpetual revisions, and ghosted handoffs.
+            </h3>
+            <p class="font-body text-lg text-white/70 max-w-3xl leading-relaxed">
+              When work is submitted before payment, leverage evaporates. Designers and developers lose over $28 Billion annually to delayed, renegotiated, or completely defaulted client invoices after deliverables are already shipped.
+            </p>
+            <div class="mt-8 flex items-center gap-4 font-mono text-xs text-status-red">
+              <span class="px-2 py-1 bg-status-red/10 border border-status-red uppercase">HIGH THREAT: UNSECURED CAPITAL</span>
+              <span class="text-white/40">// MITIGATED BY FAIRWORK SMART ESCROW</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Statement 02 -->
+        <div class="problem-card group grid grid-cols-1 lg:grid-cols-12 gap-8 items-start p-8 md:p-12 border-2 border-white/20 bg-darker transition-all duration-300 hover:border-accent">
+          <div class="lg:col-span-3">
+            <span class="font-mono text-6xl md:text-8xl font-black text-status-amber block">02</span>
+            <span class="font-mono text-xs tracking-widest text-white/50 uppercase mt-2 block">VULNERABILITY: CLIENT</span>
+          </div>
+          <div class="lg:col-span-9">
+            <h3 class="font-display font-extrabold text-3xl md:text-5xl lg:text-6xl text-white uppercase leading-[1.05] tracking-tight mb-6">
+              Clients risk upfront deposits on deliverables that miss the agreed technical brief.
+            </h3>
+            <p class="font-body text-lg text-white/70 max-w-3xl leading-relaxed">
+              Paying 50% upfront leaves clients powerless when deadlines slip or deliverables fail acceptance criteria. Ambiguous briefs allow contractors to walk away with client capital while leaving broken codebases.
+            </p>
+            <div class="mt-8 flex items-center gap-4 font-mono text-xs text-status-amber">
+              <span class="px-2 py-1 bg-status-amber/10 border border-status-amber uppercase">HIGH THREAT: CAPITAL FORFEITURE</span>
+              <span class="text-white/40">// MITIGATED BY VERIFIABLE MILESTONES</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Statement 03 -->
+        <div class="problem-card group grid grid-cols-1 lg:grid-cols-12 gap-8 items-start p-8 md:p-12 border-2 border-white/20 bg-darker transition-all duration-300 hover:border-accent">
+          <div class="lg:col-span-3">
+            <span class="font-mono text-6xl md:text-8xl font-black text-accent block">03</span>
+            <span class="font-mono text-xs tracking-widest text-white/50 uppercase mt-2 block">VULNERABILITY: MIDDLEMEN</span>
+          </div>
+          <div class="lg:col-span-9">
+            <h3 class="font-display font-extrabold text-3xl md:text-5xl lg:text-6xl text-white uppercase leading-[1.05] tracking-tight mb-6">
+              Traditional escrow platforms impose 15-20% predatory commissions, weeks of delay, and biased support reps.
+            </h3>
+            <p class="font-body text-lg text-white/70 max-w-3xl leading-relaxed">
+              Legacy freelance marketplaces act as arbitrary dictators who freeze accounts for 30+ days while taking huge cuts. Decisions are made behind closed doors with no transparent audit trail.
+            </p>
+            <div class="mt-8 flex items-center gap-4 font-mono text-xs text-accent">
+              <span class="px-2 py-1 bg-accent/20 border border-accent uppercase">HIGH THREAT: RENT-SEEKING INTERMEDIARIES</span>
+              <span class="text-white/40">// MITIGATED BY DECENTRALIZED PROTOCOL</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 4: HOW IT WORKS (PINNED HORIZONTAL-SCROLL SEQUENCE) ==================== -->
+  <section id="how-it-works" class="py-24 px-4 md:px-8 border-b-2 border-dark bg-surface overflow-hidden">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <div class="flex flex-wrap items-end justify-between mb-12 pb-6 border-b-2 border-dark">
+        <div>
+          <span class="font-mono text-xs font-bold text-accent tracking-widest uppercase block mb-2">// DETERMINISTIC WORKFLOW</span>
+          <h2 class="font-display font-black text-4xl md:text-6xl uppercase tracking-tighter text-dark">
+            How Fairwork Operates
+          </h2>
+        </div>
+        <div class="font-mono text-xs text-dark/60 mt-4 md:mt-0 flex items-center gap-4">
+          <span>HORIZONTAL STAGE VIEW</span>
+          <span class="px-2 py-0.5 bg-dark text-white font-bold">4 STAGES</span>
+        </div>
+      </div>
+
+      <!-- 4 Flat Color Cards Sequence Grid / Carousel -->
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        
+        <!-- Step 1 Card: Define -->
+        <div class="bg-base border-2 border-dark p-8 shadow-brutal flex flex-col justify-between h-[480px] hover:-translate-y-2 transition-transform duration-200">
+          <div>
+            <div class="flex items-center justify-between mb-8">
+              <span class="font-mono text-5xl font-black text-dark">01</span>
+              <div class="w-10 h-10 border-2 border-dark flex items-center justify-center bg-white">
+                <i data-lucide="file-signature" class="w-5 h-5 text-dark"></i>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-accent block mb-2">STAGE 1 // PROTOCOL INIT</span>
+            <h3 class="font-display font-bold text-2xl uppercase tracking-tight text-dark mb-4">
+              Define the Agreement
+            </h3>
+            <p class="font-body text-sm text-dark/70 leading-relaxed">
+              Parties set clear milestones with explicit acceptance criteria, deadlines, deliverables (Figma, GitHub, staging URLs), and exact payment allocations.
+            </p>
+          </div>
+          <div class="pt-6 border-t border-dark/15 font-mono text-xs text-dark/60 flex items-center justify-between">
+            <span>ACCEPTANCE MATRIX</span>
+            <span class="font-bold text-dark">VERIFIED BRIEF</span>
+          </div>
+        </div>
+
+        <!-- Step 2 Card: Fund -->
+        <div class="bg-dark text-white border-2 border-dark p-8 shadow-brutal flex flex-col justify-between h-[480px] hover:-translate-y-2 transition-transform duration-200">
+          <div>
+            <div class="flex items-center justify-between mb-8">
+              <span class="font-mono text-5xl font-black text-accent">02</span>
+              <div class="w-10 h-10 border-2 border-white/20 flex items-center justify-center bg-darker">
+                <i data-lucide="vault" class="w-5 h-5 text-accent"></i>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-accent block mb-2">STAGE 2 // CAPITAL ESCROW</span>
+            <h3 class="font-display font-bold text-2xl uppercase tracking-tight text-white mb-4">
+              Fund the Contract
+            </h3>
+            <p class="font-body text-sm text-white/70 leading-relaxed">
+              Client locks 100% of milestone funds in the smart contract escrow. Neither party can withdraw unilaterally. Talent works with complete confidence that capital is waiting.
+            </p>
+          </div>
+          <div class="pt-6 border-t border-white/20 font-mono text-xs text-white/60 flex items-center justify-between">
+            <span>SMART TIMELOCK</span>
+            <span class="font-bold text-accent">100% COMMITTED</span>
+          </div>
+        </div>
+
+        <!-- Step 3 Card: Deliver -->
+        <div class="bg-base border-2 border-dark p-8 shadow-brutal flex flex-col justify-between h-[480px] hover:-translate-y-2 transition-transform duration-200">
+          <div>
+            <div class="flex items-center justify-between mb-8">
+              <span class="font-mono text-5xl font-black text-status-amber">03</span>
+              <div class="w-10 h-10 border-2 border-dark flex items-center justify-center bg-white">
+                <i data-lucide="git-pull-request" class="w-5 h-5 text-status-amber"></i>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-status-amber block mb-2">STAGE 3 // CRYPTO PROOF</span>
+            <h3 class="font-display font-bold text-2xl uppercase tracking-tight text-dark mb-4">
+              Deliver & Verify
+            </h3>
+            <p class="font-body text-sm text-dark/70 leading-relaxed">
+              Talent submits work hashes linked to commit IDs or IPFS packages. Client is given a timed review window to verify against the milestone specifications.
+            </p>
+          </div>
+          <div class="pt-6 border-t border-dark/15 font-mono text-xs text-dark/60 flex items-center justify-between">
+            <span>TIMED INSPECTION</span>
+            <span class="font-bold text-dark">72H DEADLINE</span>
+          </div>
+        </div>
+
+        <!-- Step 4 Card: Release -->
+        <div class="bg-accent text-white border-2 border-dark p-8 shadow-brutal flex flex-col justify-between h-[480px] hover:-translate-y-2 transition-transform duration-200">
+          <div>
+            <div class="flex items-center justify-between mb-8">
+              <span class="font-mono text-5xl font-black text-white">04</span>
+              <div class="w-10 h-10 border-2 border-dark flex items-center justify-center bg-dark">
+                <i data-lucide="check-circle-2" class="w-5 h-5 text-status-green"></i>
+              </div>
+            </div>
+            <span class="font-mono text-[11px] font-bold uppercase tracking-wider text-white/80 block mb-2">STAGE 4 // FINAL SETTLEMENT</span>
+            <h3 class="font-display font-bold text-2xl uppercase tracking-tight text-white mb-4">
+              Release Payment
+            </h3>
+            <p class="font-body text-sm text-white/90 leading-relaxed">
+              Upon client approval (or automated timeout expiration without justified dispute), the contract unlocks funds straight to the freelancer's wallet. Zero commission fees.
+            </p>
+          </div>
+          <div class="pt-6 border-t border-white/20 font-mono text-xs text-white/80 flex items-center justify-between">
+            <span>BLOCKCHAIN SPEED</span>
+            <span class="font-bold text-white">INSTANT CASHOUT</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 5: FEATURES ACCORDION (7 CORE SPECIFICATIONS) ==================== -->
+  <section id="features" class="py-24 px-4 md:px-8 bg-base border-b-2 border-dark">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <div class="flex flex-wrap items-end justify-between mb-16 pb-6 border-b-2 border-dark">
+        <div>
+          <span class="font-mono text-xs font-bold text-accent tracking-widest uppercase block mb-2">// SPECIFICATION SUITE</span>
+          <h2 class="font-display font-black text-4xl md:text-6xl uppercase tracking-tighter text-dark">
+            The Seven Core Pillars
+          </h2>
+        </div>
+        <div class="font-mono text-xs text-dark/60 mt-4 md:mt-0">
+          CLICK OR HOVER TO EXPAND ARCHITECTURAL SPECS
+        </div>
+      </div>
+
+      <!-- Oversized Accordion Rows -->
+      <div class="divide-y-2 divide-dark border-y-2 border-dark" id="features-accordion">
+        
+        <!-- Feature 1: Milestone-Based Agreements -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">01</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Milestone-Based Agreements
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">SPEC & CRITERIA</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                Define deliverables, granular deadlines, strict acceptance criteria, and specific compensation milestones. Contracts are cryptographically signed by both parties' public keys before any work commences.
+              </p>
+              <div class="flex flex-wrap gap-3 font-mono text-xs">
+                <span class="px-2 py-1 bg-base border border-dark/20">Figma Frame Linking</span>
+                <span class="px-2 py-1 bg-base border border-dark/20">GitHub Pull Request Binding</span>
+                <span class="px-2 py-1 bg-base border border-dark/20">Automated SLA timers</span>
+              </div>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <div class="text-[10px] text-dark/50 mb-1">DATA PAYLOAD EXAMPLE</div>
+              <div class="text-accent font-bold">milestone.setCriteria({</div>
+              <div class="pl-4 text-dark/80">minTestCoverage: 92%,</div>
+              <div class="pl-4 text-dark/80">figmaApproved: true,</div>
+              <div class="pl-4 text-dark/80">payoutUSDC: 4500</div>
+              <div class="text-accent font-bold">})</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 2: Conditional Payments -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">02</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Conditional Payments
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">SMART CONTRACT ESCROW</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                Smart contracts strictly tie capital release to verifiable milestone conditions. Neither party can tamper with escrow balances, protecting freelancers from arbitrary non-payment and clients from uncompleted phases.
+              </p>
+              <div class="flex flex-wrap gap-3 font-mono text-xs">
+                <span class="px-2 py-1 bg-base border border-dark/20">USDC / USDT / ETH native</span>
+                <span class="px-2 py-1 bg-base border border-dark/20">Zero Custodial Risk</span>
+                <span class="px-2 py-1 bg-base border border-dark/20">Gas Optimized</span>
+              </div>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <div class="text-[10px] text-dark/50 mb-1">SMART CONTRACT LOGIC</div>
+              <div class="text-status-green font-bold">require(milestone.isVerified);</div>
+              <div class="text-dark/80">IERC20(usdc).transfer(freelancer, amount);</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 3: Delivery Verification -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">03</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Delivery Verification
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">IMMUTABLE PROOFS</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                Every code push, design file, and sprint demo is logged with SHA-256 hashes and IPFS timestamp signatures, creating a tamper-proof digital paper trail of exactly what was delivered and when.
+              </p>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <span class="text-[10px] text-dark/50 block">CID DIGEST</span>
+              <span class="font-bold text-accent break-all">ipfs://bafybeicg5q3k7a4...92jf</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 4: Dispute Resolution -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">04</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Dispute Resolution
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">STRUCTURED EVIDENCE</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                A 5-stage cryptographic dispute protocol evaluating original acceptance criteria against submitted evidence. Eliminates subjective bias with randomized neutral peer juror staking.
+              </p>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <span class="text-[10px] text-dark/50 block">COURT STATUS</span>
+              <span class="font-bold text-status-amber">PEER STAKED JUROR POOL</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 5: Agreement Transparency -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">05</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Agreement Transparency
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">AUDIT LOG REPOSITORY</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                An auditable, permanent on-chain ledger records every amendment, milestone extension, feedback comment, and payout transaction for 100% mutual accountability.
+              </p>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <span class="text-[10px] text-dark/50 block">LEDGER PROTOCOL</span>
+              <span class="font-bold text-dark">IMMUTABLE BLOCK HEIGHT RECORD</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 6: Participant Protection -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">06</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Participant Protection
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">MUTUAL SAFEGUARDS</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                Safeguards against missed deadlines, invalid rejections, and malicious payment withholding. If a client goes unresponsive for 72 hours following delivery, funds automatically release.
+              </p>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <span class="text-[10px] text-dark/50 block">AUTO-RESOLUTION TIMER</span>
+              <span class="font-bold text-status-green">72:00:00 EMERGENCY RELEASE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 7: Payment Tracking -->
+        <div class="feature-row group transition-colors duration-200 hover:bg-surface cursor-pointer" onclick="toggleFeatureRow(this)">
+          <div class="py-8 md:py-10 flex flex-wrap items-center justify-between gap-6 px-4 md:px-6">
+            <div class="flex items-center gap-6 md:gap-10">
+              <span class="font-mono text-xl md:text-2xl font-bold text-dark/40 group-hover:text-accent">07</span>
+              <h3 class="font-display font-bold text-2xl md:text-4xl uppercase tracking-tight text-dark group-hover:text-accent transition-colors">
+                Payment Tracking
+              </h3>
+            </div>
+            <div class="flex items-center gap-4 font-mono text-xs">
+              <span class="hidden md:inline-block px-3 py-1 bg-dark/5 text-dark/70 border border-dark/20 uppercase">LIFECYCLE VISIBILITY</span>
+              <div class="w-8 h-8 border-2 border-dark flex items-center justify-center group-hover:bg-accent group-hover:text-white transition-colors toggle-icon">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+              </div>
+            </div>
+          </div>
+          <div class="feature-content hidden px-4 md:px-20 pb-10 pt-2 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-white border-t border-dark/10">
+            <div class="lg:col-span-8">
+              <p class="font-body text-base md:text-lg text-dark/80 leading-relaxed mb-4">
+                Real-time visibility into pending, released, and disputed capital across every active and completed project. Instant CSV/JSON financial export for seamless accounting.
+              </p>
+            </div>
+            <div class="lg:col-span-4 p-4 bg-surface border-2 border-dark font-mono text-xs">
+              <span class="text-[10px] text-dark/50 block">EXPORT FORMATS</span>
+              <span class="font-bold text-dark">GAAP / IFRS READY CSV & API FEED</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 6: LIVE TRACKER (CHUNKY PIXEL BARS & AUDIT TICKER) ==================== -->
+  <section id="live-tracker" class="py-24 px-4 md:px-8 bg-surface border-b-2 border-dark relative">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <div class="flex flex-wrap items-end justify-between mb-16 pb-6 border-b-2 border-dark">
+        <div>
+          <span class="font-mono text-xs font-bold text-status-green tracking-widest uppercase block mb-2">// REAL-TIME PROTOCOL TELEMETRY</span>
+          <h2 class="font-display font-black text-4xl md:text-6xl uppercase tracking-tighter text-dark">
+            Live Escrow State
+          </h2>
+        </div>
+        <div class="font-mono text-xs text-dark/60 mt-4 md:mt-0 flex items-center gap-3">
+          <span class="w-2.5 h-2.5 bg-status-green animate-ping"></span>
+          <span>SYNCED TO ETHEREUM BLOCK #19,842,910</span>
+        </div>
+      </div>
+
+      <!-- Main Panel -->
+      <div class="bg-base border-2 border-dark p-6 md:p-12 shadow-brutal-lg">
+        
+        <!-- Chunky Pixel Volume Bars -->
+        <div class="space-y-8 mb-16">
+          
+          <!-- Released Funds (Green) -->
+          <div>
+            <div class="flex items-baseline justify-between mb-3 font-mono">
+              <div class="flex items-center gap-3">
+                <span class="w-3 h-3 bg-status-green"></span>
+                <span class="font-bold text-xs md:text-sm uppercase text-dark">Released Funds (Delivered & Verified)</span>
+              </div>
+              <span class="font-bold text-lg md:text-xl text-dark">$9,842,500 <span class="text-xs text-dark/50">USDC (66.1%)</span></span>
+            </div>
+            <!-- Chunky Pixel Mosaic Segmented Bar -->
+            <div class="grid grid-cols-20 gap-1.5 h-8 p-1.5 bg-white border-2 border-dark" id="bar-released">
+              <!-- Dynamically or visually created 20 chunky blocks -->
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-status-green h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+            </div>
+          </div>
+
+          <!-- Pending Funds (Amber) -->
+          <div>
+            <div class="flex items-baseline justify-between mb-3 font-mono">
+              <div class="flex items-center gap-3">
+                <span class="w-3 h-3 bg-status-amber"></span>
+                <span class="font-bold text-xs md:text-sm uppercase text-dark">Pending Escrow (Active Sprints In Progress)</span>
+              </div>
+              <span class="font-bold text-lg md:text-xl text-dark">$4,610,200 <span class="text-xs text-dark/50">USDC (30.9%)</span></span>
+            </div>
+            <div class="grid grid-cols-20 gap-1.5 h-8 p-1.5 bg-white border-2 border-dark" id="bar-pending">
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-status-amber h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+            </div>
+          </div>
+
+          <!-- Disputed Funds (Red) -->
+          <div>
+            <div class="flex items-baseline justify-between mb-3 font-mono">
+              <div class="flex items-center gap-3">
+                <span class="w-3 h-3 bg-status-red"></span>
+                <span class="font-bold text-xs md:text-sm uppercase text-dark">Under Structured Review / Disputed</span>
+              </div>
+              <span class="font-bold text-lg md:text-xl text-dark">$439,400 <span class="text-xs text-dark/50">USDC (3.0%)</span></span>
+            </div>
+            <div class="grid grid-cols-20 gap-1.5 h-8 p-1.5 bg-white border-2 border-dark" id="bar-disputed">
+              <div class="bg-status-red h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+              <div class="bg-dark/10 h-full"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Live Monospace Audit-Trail Ticker -->
+        <div class="bg-dark text-base p-6 border-2 border-dark">
+          <div class="flex items-center justify-between pb-4 border-b border-white/20 mb-4 font-mono text-xs">
+            <span class="flex items-center gap-2 text-accent font-bold">
+              <span class="w-2 h-2 bg-accent animate-ping"></span>
+              REAL-TIME CRYPTOGRAPHIC AUDIT STREAM
+            </span>
+            <span class="text-white/40">POLLING SPEED: 250MS</span>
+          </div>
+
+          <div class="space-y-3 font-mono text-xs max-h-48 overflow-y-auto pr-2" id="audit-trail-stream">
+            <div class="flex items-center justify-between py-1 border-b border-white/5">
+              <div class="flex items-center gap-3">
+                <span class="text-white/40">14:02:18 UTC</span>
+                <span class="px-1.5 py-0.5 bg-status-green/20 text-status-green border border-status-green text-[10px]">RELEASE_EXEC</span>
+                <span class="text-white">Milestone #3 Completed ($5,400 USDC)</span>
+              </div>
+              <span class="text-accent text-[11px]">0x7F2a...98Cd</span>
+            </div>
+            <div class="flex items-center justify-between py-1 border-b border-white/5">
+              <div class="flex items-center gap-3">
+                <span class="text-white/40">14:00:04 UTC</span>
+                <span class="px-1.5 py-0.5 bg-status-amber/20 text-status-amber border border-status-amber text-[10px]">VERIFY_SUBMIT</span>
+                <span class="text-white">PR #108 Merged to Staging Branch</span>
+              </div>
+              <span class="text-accent text-[11px]">0x3B99...18Ef</span>
+            </div>
+            <div class="flex items-center justify-between py-1 border-b border-white/5">
+              <div class="flex items-center gap-3">
+                <span class="text-white/40">13:58:49 UTC</span>
+                <span class="px-1.5 py-0.5 bg-accent/20 text-accent border border-accent text-[10px]">ESCROW_DEPOSIT</span>
+                <span class="text-white">Client Locked $12,000 USDC into FW-884</span>
+              </div>
+              <span class="text-accent text-[11px]">0x889c...2011</span>
+            </div>
+            <div class="flex items-center justify-between py-1 border-b border-white/5">
+              <div class="flex items-center gap-3">
+                <span class="text-white/40">13:54:12 UTC</span>
+                <span class="px-1.5 py-0.5 bg-status-red/20 text-status-red border border-status-red text-[10px]">EVIDENCE_LOG</span>
+                <span class="text-white">Figma Snapshot Hash Recorded on IPFS</span>
+              </div>
+              <span class="text-accent text-[11px]">0x19De...5Fa4</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 7: DISPUTE FLOW (5 NUMBERED SQUARES CONNECTED) ==================== -->
+  <section id="dispute-flow" class="py-24 px-4 md:px-8 bg-dark text-base border-b-2 border-dark">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <div class="flex flex-wrap items-end justify-between mb-16 pb-6 border-b border-white/20">
+        <div>
+          <span class="font-mono text-xs font-bold text-status-red tracking-widest uppercase block mb-2">// ADVERSARIAL RESOLUTION PIPELINE</span>
+          <h2 class="font-display font-black text-4xl md:text-6xl uppercase tracking-tighter text-white">
+            Structured Dispute Process
+          </h2>
+        </div>
+        <div class="font-mono text-xs text-white/50 mt-4 md:mt-0">
+          GUARANTEED FAIRNESS WITHOUT HUMAN FAVORITISM
+        </div>
+      </div>
+
+      <!-- 5 Numbered Connected Squares -->
+      <div class="relative">
+        
+        <!-- Connecting Line behind squares (Desktop) -->
+        <div class="hidden lg:block absolute top-1/2 left-0 w-full h-1 bg-white/20 -translate-y-1/2 z-0"></div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 relative z-10">
+          
+          <!-- Stage 1 -->
+          <div class="p-6 bg-darker border-2 border-white/20 hover:border-status-red transition-all duration-300 flex flex-col justify-between h-[360px]">
+            <div>
+              <div class="w-14 h-14 bg-status-red text-white font-mono font-bold text-2xl flex items-center justify-center border-2 border-dark shadow-sm mb-6">
+                01
+              </div>
+              <span class="font-mono text-[10px] text-status-red font-bold uppercase tracking-wider block mb-2">TRIGGER POINT</span>
+              <h4 class="font-display font-bold text-xl uppercase tracking-tight text-white mb-3">Rejection Raised</h4>
+              <p class="font-body text-xs text-white/70 leading-relaxed">
+                Client flags an unmet milestone requirement, freezing the fund release timer and opening the dispute ticket.
+              </p>
+            </div>
+            <div class="pt-4 border-t border-white/10 font-mono text-[11px] text-white/50">
+              [SLA: 24H WINDOW]
+            </div>
+          </div>
+
+          <!-- Stage 2 -->
+          <div class="p-6 bg-darker border-2 border-white/20 hover:border-accent transition-all duration-300 flex flex-col justify-between h-[360px]">
+            <div>
+              <div class="w-14 h-14 bg-white text-dark font-mono font-bold text-2xl flex items-center justify-center border-2 border-dark shadow-sm mb-6">
+                02
+              </div>
+              <span class="font-mono text-[10px] text-accent font-bold uppercase tracking-wider block mb-2">IMMUTABLE LOGS</span>
+              <h4 class="font-display font-bold text-xl uppercase tracking-tight text-white mb-3">Evidence Vault</h4>
+              <p class="font-body text-xs text-white/70 leading-relaxed">
+                Both parties submit cryptographic proofs: commit histories, timestamped Figma links, and original agreed brief specs.
+              </p>
+            </div>
+            <div class="pt-4 border-t border-white/10 font-mono text-[11px] text-white/50">
+              [IPFS HASH PINNED]
+            </div>
+          </div>
+
+          <!-- Stage 3 -->
+          <div class="p-6 bg-darker border-2 border-white/20 hover:border-status-amber transition-all duration-300 flex flex-col justify-between h-[360px]">
+            <div>
+              <div class="w-14 h-14 bg-status-amber text-dark font-mono font-bold text-2xl flex items-center justify-center border-2 border-dark shadow-sm mb-6">
+                03
+              </div>
+              <span class="font-mono text-[10px] text-status-amber font-bold uppercase tracking-wider block mb-2">BLIND ARBITRATION</span>
+              <h4 class="font-display font-bold text-xl uppercase tracking-tight text-white mb-3">Structured Review</h4>
+              <p class="font-body text-xs text-white/70 leading-relaxed">
+                Randomized qualified juror pool independently compares submissions strictly against the initial contract criteria.
+              </p>
+            </div>
+            <div class="pt-4 border-t border-white/10 font-mono text-[11px] text-white/50">
+              [MULTI-SIGNATORY EVAL]
+            </div>
+          </div>
+
+          <!-- Stage 4 -->
+          <div class="p-6 bg-darker border-2 border-white/20 hover:border-white transition-all duration-300 flex flex-col justify-between h-[360px]">
+            <div>
+              <div class="w-14 h-14 bg-dark text-white font-mono font-bold text-2xl flex items-center justify-center border-2 border-white/40 shadow-sm mb-6">
+                04
+              </div>
+              <span class="font-mono text-[10px] text-white/70 font-bold uppercase tracking-wider block mb-2">ON-CHAIN VERDICT</span>
+              <h4 class="font-display font-bold text-xl uppercase tracking-tight text-white mb-3">Transparent Verdict</h4>
+              <p class="font-body text-xs text-white/70 leading-relaxed">
+                A public cryptographic tally confirms the ruling. The reasoning and votes are permanently inscribed on-chain.
+              </p>
+            </div>
+            <div class="pt-4 border-t border-white/10 font-mono text-[11px] text-white/50">
+              [ZERO PRIVATE EMAILS]
+            </div>
+          </div>
+
+          <!-- Stage 5 -->
+          <div class="p-6 bg-darker border-2 border-white/20 hover:border-status-green transition-all duration-300 flex flex-col justify-between h-[360px]">
+            <div>
+              <div class="w-14 h-14 bg-status-green text-dark font-mono font-bold text-2xl flex items-center justify-center border-2 border-dark shadow-sm mb-6">
+                05
+              </div>
+              <span class="font-mono text-[10px] text-status-green font-bold uppercase tracking-wider block mb-2">AUTOMATIC PAYOUT</span>
+              <h4 class="font-display font-bold text-xl uppercase tracking-tight text-white mb-3">Release or Refund</h4>
+              <p class="font-body text-xs text-white/70 leading-relaxed">
+                Funds are programmatically dispatched to the prevailing party or split proportionally based on verified delivered scope.
+              </p>
+            </div>
+            <div class="pt-4 border-t border-white/10 font-mono text-[11px] text-white/50">
+              [INSTANT DISPATCH]
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 8: FINAL CTA (BLOCK-FILL BUTTON OVER PIXEL GRID) ==================== -->
+  <section class="py-28 px-4 md:px-8 bg-base border-b-2 border-dark relative overflow-hidden bg-tech-grid">
+    <div class="max-w-[1720px] mx-auto text-center relative z-10">
+      
+      <div class="inline-flex items-center gap-2 px-3 py-1 bg-dark text-white font-mono text-xs uppercase tracking-widest mb-8">
+        <span class="w-2 h-2 bg-accent"></span>
+        Zero Ambiguity // Absolute Settlement
+      </div>
+
+      <h2 class="font-display font-black text-5xl sm:text-7xl md:text-8xl lg:text-9xl uppercase tracking-tighter text-dark max-w-6xl mx-auto leading-[0.88] mb-12">
+        BUILD AGREEMENTS BOTH SIDES CAN TRUST.
+      </h2>
+
+      <p class="font-body text-lg md:text-2xl text-dark/70 max-w-2xl mx-auto mb-12 leading-relaxed">
+        Join over 12,000 developers, studios, and enterprises creating frictionless milestone contracts today.
+      </p>
+
+      <div class="flex flex-wrap items-center justify-center gap-6">
+        <button onclick="openAgreementModal()" class="px-10 py-5 bg-accent text-white font-mono text-base font-bold uppercase tracking-wider border-2 border-dark shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-3 group" data-cursor="BUILD">
+          <span>Create an Agreement</span>
+          <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1 transition-transform"></i>
+        </button>
+
+        <button id="cta-login-btn" class="px-10 py-5 bg-white text-dark font-mono text-base font-bold uppercase tracking-wider border-2 border-dark hover:bg-dark hover:text-white transition-colors" data-cursor="AUTH">
+          Open Web3 Portal
+        </button>
+      </div>
+
+      <div class="mt-16 flex flex-wrap items-center justify-center gap-8 font-mono text-xs text-dark/50">
+        <span>NO SUBSCRIPTION REQUIRED</span>
+        <span>•</span>
+        <span>AUDITED BY OPENZEPPELIN & TRAIL OF BITS</span>
+        <span>•</span>
+        <span>0.5% PROTOCOL SETTLEMENT FEE</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ==================== SECTION 9: FOOTER ==================== -->
+  <footer class="bg-dark text-base pt-20 pb-12 px-4 md:px-8 border-t-2 border-dark">
+    <div class="max-w-[1720px] mx-auto">
+      
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-12 pb-16 border-b border-white/20">
+        
+        <div class="md:col-span-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-8 h-8 bg-accent border-2 border-white flex items-center justify-center">
+              <div class="w-3 h-3 bg-white"></div>
+            </div>
+            <span class="font-display font-black text-3xl tracking-tighter text-white uppercase">Fairwork</span>
+          </div>
+          <p class="font-body text-base text-white/60 max-w-md mb-8">
+            The decentralized milestone agreement and escrow protocol. Replacing broken trust with deterministic code.
+          </p>
+          <div class="font-mono text-xs text-white/40 space-y-1">
+            <div>CONTRACT: 0x8849F2184aDe959C...</div>
+            <div>LICENSE: MIT / APACHE 2.0 OPEN PROTOCOL</div>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 font-mono text-xs space-y-3">
+          <div class="text-white/40 uppercase tracking-widest font-bold mb-4">PROTOCOL</div>
+          <div><a href="#how-it-works" class="hover:text-accent transition-colors">How It Works</a></div>
+          <div><a href="#features" class="hover:text-accent transition-colors">7 Core Pillars</a></div>
+          <div><a href="#live-tracker" class="hover:text-accent transition-colors">Escrow Telemetry</a></div>
+          <div><a href="#dispute-flow" class="hover:text-accent transition-colors">Dispute Courts</a></div>
+          <div><a href="#" class="hover:text-accent transition-colors">Audit Reports</a></div>
+        </div>
+
+        <div class="md:col-span-2 font-mono text-xs space-y-3">
+          <div class="text-white/40 uppercase tracking-widest font-bold mb-4">RESOURCES</div>
+          <div><a href="#" class="hover:text-accent transition-colors">Documentation</a></div>
+          <div><a href="#" class="hover:text-accent transition-colors">Smart Contracts GitHub</a></div>
+          <div><a href="#" class="hover:text-accent transition-colors">Bug Bounty</a></div>
+          <div><a href="#" class="hover:text-accent transition-colors">Media Kit</a></div>
+          <div><a href="#" class="hover:text-accent transition-colors">Status Page</a></div>
+        </div>
+
+        <div class="md:col-span-2 flex flex-col justify-between items-start md:items-end">
+          <div class="font-mono text-xs text-left md:text-right">
+            <span class="text-white/40 block">TIME SERVER</span>
+            <span id="utc-clock" class="font-bold text-accent">00:00:00 UTC</span>
+          </div>
+
+          <!-- Back to top square -->
+          <button onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="w-14 h-14 bg-base text-dark border-2 border-white/20 flex items-center justify-center font-mono font-bold text-sm hover:bg-accent hover:text-white transition-colors" data-cursor="TOP">
+            ↑
+          </button>
+        </div>
+
+      </div>
+
+      <div class="pt-8 flex flex-wrap items-center justify-between font-mono text-xs text-white/50 gap-4">
+        <div>© 2026 FAIRWORK FOUNDATION. ALL RIGHTS RESERVED.</div>
+        <div class="flex items-center gap-6">
+          <a href="#" class="hover:text-white">TERMS OF PROTOCOL</a>
+          <a href="#" class="hover:text-white">PRIVACY AUDIT</a>
+          <a href="#" class="hover:text-white">SECURITY DISCLOSURE</a>
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ==================== INTERACTIVE LOGIN PORTAL MODAL (/login) ==================== -->
+  <div id="login-modal" class="fixed inset-0 z-[9000] bg-dark/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="relative w-full max-w-5xl bg-base border-2 border-dark shadow-brutal-lg grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+      
+      <!-- Close Button -->
+      <button onclick="closeLoginModal()" class="absolute top-4 right-4 z-50 w-8 h-8 bg-white border-2 border-dark font-mono font-bold text-sm hover:bg-dark hover:text-white transition-colors flex items-center justify-center" data-cursor="CLOSE">
+        ✕
+      </button>
+
+      <!-- Left Column: Sign-In Card (7 cols) -->
+      <div class="lg:col-span-7 p-8 md:p-12 flex flex-col justify-between">
+        <div>
+          <div class="flex items-center gap-3 mb-6">
+            <div class="w-5 h-5 bg-accent border-2 border-dark"></div>
+            <span class="font-display font-extrabold text-xl uppercase tracking-tighter">FAIRWORK PORTAL // AUTH</span>
+          </div>
+
+          <h3 class="font-display font-black text-3xl md:text-4xl uppercase tracking-tight text-dark mb-2">
+            Access Agreements
+          </h3>
+          <p class="font-body text-xs text-dark/70 mb-8 font-mono">
+            VERIFIABLE CREDENTIAL OR WEB3 WALLET LOGIN
+          </p>
+
+          <!-- Freelancer / Client Toggle -->
+          <div class="grid grid-cols-2 p-1 bg-surface border-2 border-dark mb-6 font-mono text-xs font-bold">
+            <button id="role-freelancer-btn" class="py-2 bg-dark text-white uppercase text-center transition-all" onclick="setRole('freelancer')">
+              Freelancer
+            </button>
+            <button id="role-client-btn" class="py-2 text-dark/60 uppercase text-center hover:text-dark transition-all" onclick="setRole('client')">
+              Client
+            </button>
+          </div>
+
+          <!-- Connect Wallet Button -->
+          <button onclick="simulateWalletConnect()" id="connect-wallet-btn" class="w-full py-3 bg-white border-2 border-dark font-mono text-xs font-bold uppercase tracking-wider mb-6 flex items-center justify-center gap-2 hover:bg-surface transition-colors shadow-sm" data-cursor="CONNECT">
+            <i data-lucide="wallet" class="w-4 h-4 text-accent"></i>
+            <span id="wallet-btn-label">Connect Web3 Wallet (Metamask / Phantom)</span>
+          </button>
+
+          <div class="relative flex py-2 items-center mb-6">
+            <div class="flex-grow border-t border-dark/20"></div>
+            <span class="flex-shrink mx-4 font-mono text-[10px] text-dark/50 uppercase">OR VIA CREDENTIAL</span>
+            <div class="flex-grow border-t border-dark/20"></div>
+          </div>
+
+          <!-- Sign-In Form with Inline Validation -->
+          <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+            <div>
+              <label class="block font-mono text-xs font-bold uppercase text-dark mb-1">Identity Email / ENS Domain</label>
+              <input type="text" id="auth-email" required placeholder="alex@studio.design or alex.eth" class="w-full p-3 bg-white border-2 border-dark font-mono text-xs focus:outline-none focus:border-accent">
+            </div>
+
+            <div>
+              <label class="block font-mono text-xs font-bold uppercase text-dark mb-1">Passkey or Cryptographic Signature</label>
+              <input type="password" id="auth-pass" required placeholder="••••••••••••••••" class="w-full p-3 bg-white border-2 border-dark font-mono text-xs focus:outline-none focus:border-accent">
+            </div>
+
+            <button type="submit" id="auth-submit-btn" class="w-full py-4 bg-accent text-white font-mono text-xs font-bold uppercase tracking-wider border-2 border-dark shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center justify-center gap-2" data-cursor="ENTER">
+              <span>Sign In to Dashboard</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </form>
+
+          <div id="auth-success-msg" class="hidden mt-4 p-3 bg-status-green/20 border-2 border-status-green text-dark font-mono text-xs">
+            ✓ Signature validated! Initializing encrypted dashboard session...
+          </div>
+        </div>
+
+        <div class="mt-8 pt-4 border-t border-dark/15 font-mono text-[11px] text-dark/50 flex justify-between">
+          <span>ZERO-KNOWLEDGE SESSION</span>
+          <span class="text-accent font-bold">AES-256 GCM</span>
+        </div>
+      </div>
+
+      <!-- Right Column: Orange Pixel Dissolve Canvas & Ticker (5 cols) -->
+      <div class="lg:col-span-5 bg-accent p-8 md:p-12 border-t-2 lg:border-t-0 lg:border-l-2 border-dark flex flex-col justify-between relative overflow-hidden text-white">
+        
+        <!-- Animated Pixel Canvas simulation -->
+        <canvas id="login-pixel-canvas" class="absolute inset-0 w-full h-full opacity-30 pointer-events-none"></canvas>
+
+        <div class="relative z-10">
+          <span class="font-mono text-xs font-bold uppercase tracking-widest text-white/80 block mb-3">// ARCHITECTURAL GUARANTEE</span>
+          <h4 class="font-display font-black text-3xl uppercase leading-none tracking-tight mb-4">
+            FAIRWORK DISSOLVES RISK
+          </h4>
+          <p class="font-body text-xs text-white/90 leading-relaxed">
+            Contracts lock milestones on-chain. Funds release immediately upon verifiable completion. Disputed deliverables pass through structured evidence courts.
+          </p>
+        </div>
+
+        <!-- 7 Features Cycling Ticker -->
+        <div class="relative z-10 bg-dark/20 p-4 border border-white/30 backdrop-blur-sm mt-8">
+          <span class="font-mono text-[10px] text-white/60 block uppercase tracking-wider mb-1">FEATURE STREAM // 07</span>
+          <div id="feature-cycling-ticker" class="font-display font-bold text-sm tracking-wide text-white uppercase min-h-[3rem] flex items-center">
+            01. Milestone-Based Agreements: predefined acceptance criteria.
+          </div>
+        </div>
+
+        <div class="relative z-10 mt-6 font-mono text-[10px] text-white/60 flex items-center justify-between">
+          <span>PROTOCOL HASH: 0x90A...11</span>
+          <span>SYSTEM READY</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== NEW AGREEMENT CREATION MODAL ==================== -->
+  <div id="agreement-modal" class="fixed inset-0 z-[9000] bg-dark/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="relative w-full max-w-2xl bg-base border-2 border-dark shadow-brutal-lg p-8 md:p-10">
+      <button onclick="closeAgreementModal()" class="absolute top-4 right-4 w-8 h-8 bg-white border-2 border-dark font-mono font-bold text-sm hover:bg-dark hover:text-white transition-colors flex items-center justify-center">
+        ✕
+      </button>
+
+      <div class="flex items-center gap-3 mb-4">
+        <span class="w-3 h-3 bg-accent"></span>
+        <span class="font-mono text-xs font-bold uppercase text-accent">SMART ESCROW WIZARD</span>
+      </div>
+
+      <h3 class="font-display font-black text-3xl uppercase tracking-tight text-dark mb-2">
+        Initiate Milestone Agreement
+      </h3>
+      <p class="font-body text-xs text-dark/70 mb-6">
+        Generate an auditable, non-custodial milestone contract bound by strict verification conditions.
+      </p>
+
+      <div class="space-y-4 font-mono text-xs">
+        <div>
+          <label class="block font-bold text-dark mb-1 uppercase">Agreement Title</label>
+          <input type="text" id="new-contract-title" value="Awwwards-Level Design & Smart Contract Build" class="w-full p-3 bg-white border-2 border-dark focus:outline-none focus:border-accent">
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block font-bold text-dark mb-1 uppercase">Total Escrow (USDC)</label>
+            <input type="number" id="new-contract-amount" value="15000" class="w-full p-3 bg-white border-2 border-dark focus:outline-none focus:border-accent">
+          </div>
+          <div>
+            <label class="block font-bold text-dark mb-1 uppercase">Milestone Splits</label>
+            <select class="w-full p-3 bg-white border-2 border-dark focus:outline-none focus:border-accent">
+              <option>3 Milestones (30% / 40% / 30%)</option>
+              <option>2 Milestones (50% / 50%)</option>
+              <option>4 Milestones (25% Each)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-dark mb-1 uppercase">Counterparty Wallet or Email</label>
+          <input type="text" placeholder="client.eth or studio@freelancer.com" class="w-full p-3 bg-white border-2 border-dark focus:outline-none focus:border-accent">
+        </div>
+
+        <button onclick="deploySimulatedContract()" id="deploy-contract-btn" class="w-full py-4 bg-accent text-white font-mono text-xs font-bold uppercase tracking-wider border-2 border-dark shadow-brutal hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all mt-4 flex items-center justify-center gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
+          <span>Deploy to Smart Escrow</span>
+        </button>
+
+        <div id="deploy-success-alert" class="hidden p-3 bg-status-green/20 border-2 border-status-green text-dark font-mono text-xs">
+          ✓ Contract FW-2026-99 deployed to Escrow Pool! 15,000 USDC reserved.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== INTERACTION SCRIPT & GSAP LOGIC ==================== -->
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // 1. UTC Clock
+    function updateClock() {
+      const now = new Date();
+      const str = now.toISOString().substring(11, 19) + ' UTC';
+      const el = document.getElementById('utc-clock');
+      if (el) el.innerText = str;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // 2. Custom Snapping Grid Cursor
+    const cursor = document.getElementById('custom-cursor');
+    const cursorLabel = document.getElementById('cursor-label');
+    const GRID_SIZE = 40;
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      
+      // Follow smoothly
+      cursor.style.left = mouseX + 'px';
+      cursor.style.top = mouseY + 'px';
+    });
+
+    // Cursor hover expansion on data-cursor elements
+    document.querySelectorAll('[data-cursor]').forEach(elem => {
+      elem.addEventListener('mouseenter', () => {
+        const label = elem.getAttribute('data-cursor');
+        cursor.style.width = '52px';
+        cursor.style.height = '52px';
+        cursor.style.backgroundColor = '#0B0B0B';
+        cursor.style.borderColor = '#FF5A1F';
+        cursorLabel.innerText = label;
+        cursorLabel.style.opacity = '1';
+      });
+
+      elem.addEventListener('mouseleave', () => {
+        cursor.style.width = '14px';
+        cursor.style.height = '14px';
+        cursor.style.backgroundColor = '#FF5A1F';
+        cursor.style.borderColor = '#0B0B0B';
+        cursorLabel.innerText = '';
+        cursorLabel.style.opacity = '0';
+      });
+    });
+
+    // 3. Signature Pixel Reveal Canvas Animation on Page Load
+    function initPixelReveal() {
+      const canvas = document.getElementById('pixel-reveal-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      const width = canvas.width = window.innerWidth;
+      const height = canvas.height = window.innerHeight;
+
+      const blockSize = 40;
+      const cols = Math.ceil(width / blockSize);
+      const rows = Math.ceil(height / blockSize);
+      const totalBlocks = cols * rows;
+
+      // Color palette for mosaic blocks
+      const colors = ['#FF5A1F', '#0B0B0B', '#EFEDE8', '#F6F5F2', '#1FD655'];
+
+      // Create blocks array with random dissolve delay
+      const blocks = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          blocks.push({
+            x: c * blockSize,
+            y: r * blockSize,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            dissolved: false,
+            delay: Math.random() * 900 // 0 to 900ms stagger
+          });
+        }
+      }
+
+      const startTime = performance.now();
+      const totalDuration = 1400; // 1.4s
+
+      function animateReveal(now) {
+        const elapsed = now - startTime;
+        ctx.clearRect(0, 0, width, height);
+
+        let activeCount = 0;
+
+        for (let i = 0; i < blocks.length; i++) {
+          const b = blocks[i];
+          if (elapsed < b.delay) {
+            ctx.fillStyle = b.color;
+            ctx.fillRect(b.x, b.y, blockSize, blockSize);
+            activeCount++;
+          } else if (elapsed < b.delay + 300) {
+            // Flickering dissolve
+            const progress = (elapsed - b.delay) / 300;
+            if (Math.random() > progress) {
+              ctx.fillStyle = b.color;
+              ctx.fillRect(b.x, b.y, blockSize, blockSize);
+              activeCount++;
+            }
+          }
+        }
+
+        if (elapsed < totalDuration && activeCount > 0) {
+          requestAnimationFrame(animateReveal);
+        } else {
+          canvas.style.display = 'none';
+        }
+      }
+
+      requestAnimationFrame(animateReveal);
+    }
+    window.addEventListener('load', initPixelReveal);
+
+    // 4. GSAP Scroll Animations
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.gsap && window.ScrollTrigger) {
+        gsap.registerPlugin(ScrollTrigger);
+
+        // Hero words stagger reveal
+        gsap.from('.hero-word', {
+          y: 120,
+          opacity: 0,
+          duration: 1,
+          stagger: 0.15,
+          ease: 'power3.out',
+          delay: 0.3
+        });
+
+        // Problem cards entrance
+        gsap.utils.toArray('.problem-card').forEach((card, i) => {
+          gsap.from(card, {
+            scrollTrigger: {
+              trigger: card,
+              start: 'top 85%',
+            },
+            y: 40,
+            opacity: 0,
+            duration: 0.8,
+            ease: 'power2.out'
+          });
+        });
+      }
+    });
+
+    // 5. Accordion Toggle Logic
+    function toggleFeatureRow(rowElement) {
+      const content = rowElement.querySelector('.feature-content');
+      const icon = rowElement.querySelector('.toggle-icon');
+      
+      const isHidden = content.classList.contains('hidden');
+      
+      // Close other rows for clean accordions
+      document.querySelectorAll('.feature-content').forEach(c => c.classList.add('hidden'));
+      document.querySelectorAll('.toggle-icon').forEach(ic => {
+        ic.innerHTML = '<i data-lucide="plus" class="w-4 h-4"></i>';
+      });
+
+      if (isHidden) {
+        content.classList.remove('hidden');
+        icon.innerHTML = '<i data-lucide="minus" class="w-4 h-4"></i>';
+      }
+      lucide.createIcons();
+    }
+
+    // 6. Interactive Milestone Release Simulation
+    function simulateReleaseM2() {
+      const btn = document.getElementById('btn-release-m2');
+      btn.innerHTML = '<span class="animate-spin inline-block mr-2">◌</span> Broadcasting to Ethereum...';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '✓ $7,200 USDC Released to Talent';
+        btn.classList.remove('bg-dark', 'hover:bg-accent');
+        btn.classList.add('bg-status-green', 'text-dark', 'border-dark');
+
+        // Add to live audit stream
+        const stream = document.getElementById('audit-trail-stream');
+        const newItem = document.createElement('div');
+        newItem.className = 'flex items-center justify-between py-1 border-b border-white/5 animate-pulse';
+        newItem.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="text-white/40">JUST NOW</span>
+            <span class="px-1.5 py-0.5 bg-status-green/20 text-status-green border border-status-green text-[10px]">RELEASE_EXEC</span>
+            <span class="text-white">M2 High-Fidelity UI Released ($7,200 USDC)</span>
+          </div>
+          <span class="text-accent text-[11px]">0x9021...AA4</span>
+        `;
+        stream.insertBefore(newItem, stream.firstChild);
+      }, 1200);
+    }
+
+    // 7. Modal Handlers
+    const loginModal = document.getElementById('login-modal');
+    const agreementModal = document.getElementById('agreement-modal');
+
+    document.getElementById('nav-login-btn').addEventListener('click', () => {
+      loginModal.classList.remove('hidden');
+      loginModal.classList.add('flex');
+      initLoginPixelCanvas();
+    });
+
+    document.getElementById('cta-login-btn').addEventListener('click', () => {
+      loginModal.classList.remove('hidden');
+      loginModal.classList.add('flex');
+      initLoginPixelCanvas();
+    });
+
+    function closeLoginModal() {
+      loginModal.classList.add('hidden');
+      loginModal.classList.remove('flex');
+    }
+
+    function openAgreementModal() {
+      agreementModal.classList.remove('hidden');
+      agreementModal.classList.add('flex');
+    }
+
+    function closeAgreementModal() {
+      agreementModal.classList.add('hidden');
+      agreementModal.classList.remove('flex');
+    }
+
+    function scrollToElement(id) {
+      const el = document.querySelector(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // 8. Role Toggle in Login
+    let currentRole = 'freelancer';
+    function setRole(role) {
+      currentRole = role;
+      const fBtn = document.getElementById('role-freelancer-btn');
+      const cBtn = document.getElementById('role-client-btn');
+      if (role === 'freelancer') {
+        fBtn.className = 'py-2 bg-dark text-white uppercase text-center transition-all';
+        cBtn.className = 'py-2 text-dark/60 uppercase text-center hover:text-dark transition-all';
+      } else {
+        cBtn.className = 'py-2 bg-dark text-white uppercase text-center transition-all';
+        fBtn.className = 'py-2 text-dark/60 uppercase text-center hover:text-dark transition-all';
+      }
+    }
+
+    // 9. Wallet simulation
+    function simulateWalletConnect() {
+      const btn = document.getElementById('wallet-btn-label');
+      btn.innerText = 'Connecting...';
+      setTimeout(() => {
+        btn.innerText = 'Connected: 0x8F3...9C1 (Sepolia Testnet)';
+        document.getElementById('connect-wallet-btn').classList.add('border-status-green', 'bg-status-green/10');
+      }, 800);
+    }
+
+    // 10. Auth submit
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('auth-submit-btn');
+      btn.innerHTML = '<span class="animate-spin inline-block mr-2">◌</span> Signing In...';
+      setTimeout(() => {
+        document.getElementById('auth-success-msg').classList.remove('hidden');
+        btn.innerHTML = 'Authenticated ✓';
+        setTimeout(() => {
+          closeLoginModal();
+        }, 1200);
+      }, 900);
+    }
+
+    // 11. Deploy Contract
+    function deploySimulatedContract() {
+      const btn = document.getElementById('deploy-contract-btn');
+      btn.innerHTML = '<span class="animate-spin inline-block mr-2">◌</span> Locking into Smart Escrow...';
+      setTimeout(() => {
+        document.getElementById('deploy-success-alert').classList.remove('hidden');
+        btn.innerHTML = 'Contract Successfully Locked ✓';
+        setTimeout(() => {
+          closeAgreementModal();
+        }, 1500);
+      }, 1000);
+    }
+
+    // 12. Login Canvas Mosaic Animation
+    let loginCanvasAnim = null;
+    function initLoginPixelCanvas() {
+      const canvas = document.getElementById('login-pixel-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width = canvas.offsetWidth;
+      const h = canvas.height = canvas.offsetHeight;
+      const size = 30;
+      const cols = Math.ceil(w / size);
+      const rows = Math.ceil(h / size);
+
+      function draw() {
+        ctx.clearRect(0, 0, w, h);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (Math.random() > 0.6) {
+              ctx.fillStyle = Math.random() > 0.5 ? '#FFFFFF' : '#0B0B0B';
+              ctx.fillRect(c * size, r * size, size - 2, size - 2);
+            }
+          }
+        }
+      }
+
+      if (loginCanvasAnim) clearInterval(loginCanvasAnim);
+      loginCanvasAnim = setInterval(draw, 180);
+      draw();
+    }
+
+    // 13. Feature Cycling Ticker in Login Panel
+    const featuresList = [
+      "01. Milestone-Based Agreements: Predefined acceptance criteria & deliverables.",
+      "02. Conditional Payments: Smart escrow releases only on fulfilled terms.",
+      "03. Delivery Verification: Immutable commit & design hashes on IPFS.",
+      "04. Dispute Resolution: Structured, randomized peer juror court.",
+      "05. Agreement Transparency: Permanent cryptographic decision logs.",
+      "06. Participant Protection: 72h auto-resolution against ghosting.",
+      "07. Payment Tracking: Instant USDC balances & auditable accounting."
+    ];
+    let tickerIdx = 0;
+    setInterval(() => {
+      tickerIdx = (tickerIdx + 1) % featuresList.length;
+      const el = document.getElementById('feature-cycling-ticker');
+      if (el) {
+        el.innerText = featuresList[tickerIdx];
+      }
+    }, 2800);
+  </script>
+</body>
+</html>
