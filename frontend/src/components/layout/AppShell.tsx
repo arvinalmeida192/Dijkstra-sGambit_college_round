@@ -49,6 +49,7 @@ export function AppShell() {
         { to: routes.project(projectId), label: 'Overview', end: true as const },
         { to: routes.agreement(projectId), label: 'Agreement' },
         { to: routes.progress(projectId), label: 'Progress' },
+        { to: routes.fund(projectId), label: 'Escrow / Fund' },
         { to: routes.disputes(projectId), label: 'Disputes' },
         { to: routes.payments(projectId), label: 'Payments' },
       ]

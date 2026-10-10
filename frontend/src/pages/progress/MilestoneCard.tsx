@@ -10,12 +10,9 @@ import { Modal } from '../../components/ui/Modal'
 import { Panel } from '../../components/ui/Panel'
 import { Textarea } from '../../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
-<<<<<<< HEAD
 import type { Milestone, MilestoneExtension } from '../../lib/api/milestones'
-=======
 import { routes } from '../../lib/routes'
 import type { Milestone } from '../../lib/api/milestones'
->>>>>>> origin/main
 import type {
   ReviewDecision,
   Submission,
@@ -418,7 +415,6 @@ export function MilestoneCard({
         />
       ) : null}
 
-<<<<<<< HEAD
       {pendingExtension ? (
         <div className="border-t-2 border-dark/10 pt-3 space-y-2">
           <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
@@ -432,7 +428,6 @@ export function MilestoneCard({
           pendingExtension.proposedBy !== currentUserId &&
           (isClient || isFreelancer) ? (
             <div className="flex flex-wrap gap-2">
-=======
       {milestone.status === 'DISPUTED' ? (
         <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
           <Link to={routes.disputes(milestone.projectId)}>
@@ -452,7 +447,6 @@ export function MilestoneCard({
                   ? 'danger'
                   : 'secondary'
             return (
->>>>>>> origin/main
               <Button
                 size="sm"
                 disabled={busy}
@@ -478,6 +472,17 @@ export function MilestoneCard({
               Waiting for the other party to accept or reject.
             </p>
           )}
+        </div>
+      ) : milestone.status === 'APPROVED' ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t-2 border-dark/10">
+          <p className="font-mono text-[11px] text-dark/70">
+            Milestone approved. Funds can be released to the freelancer.
+          </p>
+          <Link to={routes.fund(milestone.projectId)}>
+            <Button size="sm" variant="primary">
+              View Escrow / Release Funds →
+            </Button>
+          </Link>
         </div>
       ) : null}
 

@@ -58,4 +58,14 @@ export const env = {
   ),
   deadlineWarnDays: Number(process.env.DEADLINE_WARN_DAYS ?? 3),
   inactivityDays: Number(process.env.INACTIVITY_DAYS ?? 7),
+
+  /** Phase 21 — Gateway Payments (Razorpay Sandbox) */
+  gatewayPaymentsEnabled:
+    (process.env.GATEWAY_PAYMENTS_ENABLED ?? 'false').toLowerCase() === 'true',
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? '',
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
+  payoutMode: process.env.PAYOUT_MODE ?? 'simulated',
+  processingFeeRate: Number(process.env.PROCESSING_FEE_RATE ?? 0.02), // default 2%
 }
+

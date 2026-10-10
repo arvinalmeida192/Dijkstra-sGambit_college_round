@@ -453,11 +453,28 @@ function AgreementVersionPanel({
       <TermsView terms={agreement.terms} />
 
       {agreement.acceptances.length > 0 && highlight === 'active' ? (
-        <AcceptanceStatus
-          agreement={agreement}
-          project={project}
-          currentUserId={currentUserId}
-        />
+        <>
+          <AcceptanceStatus
+            agreement={agreement}
+            project={project}
+            currentUserId={currentUserId}
+          />
+          <div className="pt-2 border-t-2 border-dark/10 flex flex-wrap items-center justify-between gap-3 bg-surface p-3 border-2 border-dark">
+            <div>
+              <p className="font-mono text-xs font-bold uppercase text-dark">
+                Milestone Escrow Funding
+              </p>
+              <p className="font-body text-xs text-dark/70">
+                Lock ₹{((agreement.terms.totalPayment ?? 0) / 100).toFixed(2)} in escrow before starting milestones.
+              </p>
+            </div>
+            <Link to={routes.fund(project.id)}>
+              <Button size="sm" variant="primary">
+                Fund Project / Escrow →
+              </Button>
+            </Link>
+          </div>
+        </>
       ) : null}
 
       <p className="font-mono text-[10px] text-dark/50">
