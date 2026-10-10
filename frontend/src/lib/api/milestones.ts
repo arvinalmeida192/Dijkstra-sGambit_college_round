@@ -6,6 +6,7 @@ export type Milestone = {
   projectId: string
   agreementId: string | null
   title: string
+  description?: string | null
   deliverables: string
   acceptanceCriteria: string
   amount: number
@@ -26,6 +27,7 @@ export type Milestone = {
 
 export type MilestoneInput = {
   title: string
+  description?: string | null
   deliverables: string
   acceptanceCriteria: string
   amount: number
@@ -39,6 +41,7 @@ export type MilestoneUpdateInput = Partial<
   Pick<
     MilestoneInput,
     | 'title'
+    | 'description'
     | 'deliverables'
     | 'acceptanceCriteria'
     | 'amount'

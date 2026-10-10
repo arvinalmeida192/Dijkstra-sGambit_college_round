@@ -9,15 +9,22 @@ export type AgreementStatus =
 
 export type AgreementMilestoneTerms = {
   title: string
-  deliverables: string
-  acceptanceCriteria: string
+  description?: string
+  deliverables?: string
+  acceptanceCriteria?: string
   amount: number
   dueDate?: string
   reviewWindowDays?: number
 }
 
 export type AgreementTerms = {
-  summary: string
+  title?: string
+  description?: string
+  summary?: string
+  finalDeliverable?: string
+  completionCriteria?: string
+  totalPayment?: number
+  finalDueDate?: string
   milestones: AgreementMilestoneTerms[]
   notes?: string
 }
@@ -51,7 +58,13 @@ export type Agreement = {
 }
 
 export type AgreementTermsInput = {
-  summary: string
+  title?: string
+  description?: string
+  summary?: string
+  finalDeliverable?: string
+  completionCriteria?: string
+  totalPayment?: number
+  finalDueDate?: string
   milestones: AgreementMilestoneTerms[]
   notes?: string
 }
