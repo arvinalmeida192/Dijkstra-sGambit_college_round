@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import { AuthLayout } from '../components/layout/AuthLayout'
 import { Alert } from '../components/ui/Alert'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
-import { register, AuthApiError, isAuthApiConfigured } from '../lib/api/auth'
+import { AuthApiError, isAuthApiConfigured } from '../lib/api/auth'
 import { validateRegisterForm } from '../lib/authValidation'
 import type { UserRole } from '../lib/roles'
 import { routes } from '../lib/routes'
@@ -17,6 +18,8 @@ const roleOptions = [
 ]
 
 export function RegisterPage() {
+  const { register, status } = useAuth()
+  const navigate = useNavigate()
   const [params] = useSearchParams()
   const invite = params.get('invite')?.trim() ?? ''
 
@@ -28,6 +31,10 @@ export function RegisterPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  if (status === 'authenticated') {
+    return <Navigate to={routes.dashboard} replace />
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -51,9 +58,7 @@ export function RegisterPage() {
         password,
         role,
       })
-      setFormError(
-        'Unexpected: auth API returned success but session handling is not wired yet (Phase 07).',
-      )
+      navigate(routes.dashboard, { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setFormError(err.message)
@@ -93,10 +98,9 @@ export function RegisterPage() {
     >
       {!isAuthApiConfigured() ? (
         <Alert tone="warning" className="mb-6" role="status">
-          Backend auth is not available yet (Phase 07). This form validates locally and
-          will call <code className="font-bold">POST /api/v1/auth/register</code> when{' '}
-          <code className="font-bold">VITE_API_BASE_URL</code> is set. No mock account
-          is created.
+          Set <code className="font-bold">VITE_API_BASE_URL</code> (see{' '}
+          <code className="font-bold">frontend/.env.example</code>) so this form
+          can reach the Phase 07 auth API.
         </Alert>
       ) : null}
 

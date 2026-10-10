@@ -1,20 +1,31 @@
 import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import { AuthLayout } from '../components/layout/AuthLayout'
 import { Alert } from '../components/ui/Alert'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { login, AuthApiError, isAuthApiConfigured } from '../lib/api/auth'
+import { AuthApiError, isAuthApiConfigured } from '../lib/api/auth'
 import { validateLoginForm } from '../lib/authValidation'
 import { routes } from '../lib/routes'
 
 export function LoginPage() {
+  const { login, status } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from =
+    (location.state as { from?: string } | null)?.from ?? routes.dashboard
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  if (status === 'authenticated') {
+    return <Navigate to={from} replace />
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -27,10 +38,7 @@ export function LoginPage() {
     setLoading(true)
     try {
       await login({ email: email.trim(), password })
-      // Phase 07 will persist the session and navigate. Do not invent success here.
-      setFormError(
-        'Unexpected: auth API returned success but session handling is not wired yet (Phase 07).',
-      )
+      navigate(from, { replace: true })
     } catch (err) {
       if (err instanceof AuthApiError) {
         setFormError(err.message)
@@ -49,10 +57,9 @@ export function LoginPage() {
     >
       {!isAuthApiConfigured() ? (
         <Alert tone="warning" className="mb-6" role="status">
-          Backend auth is not available yet (Phase 07). This form validates locally and
-          will call <code className="font-bold">POST /api/v1/auth/login</code> when{' '}
-          <code className="font-bold">VITE_API_BASE_URL</code> is set. No mock login
-          success is fabricated.
+          Set <code className="font-bold">VITE_API_BASE_URL</code> (see{' '}
+          <code className="font-bold">frontend/.env.example</code>) so this form
+          can reach the Phase 07 auth API.
         </Alert>
       ) : null}
 

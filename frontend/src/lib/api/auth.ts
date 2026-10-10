@@ -1,8 +1,7 @@
 import type { UserRole } from '../roles'
 
 /**
- * Auth API client boundary for Phase 06.
- * Real auth lives in Phase 07 — until then this module refuses to fabricate success.
+ * Auth API client — talks to Phase 07 backend endpoints.
  */
 
 export type AuthUser = {
@@ -10,6 +9,7 @@ export type AuthUser = {
   name: string
   email: string
   role: UserRole
+  walletAddress?: string | null
 }
 
 export type LoginRequest = {
@@ -49,10 +49,14 @@ function apiBaseUrl(): string | undefined {
 
 async function parseError(response: Response): Promise<AuthApiError> {
   try {
-    const body = (await response.json()) as { message?: string; error?: string }
+    const body = (await response.json()) as {
+      message?: string
+      error?: string
+    }
     const message =
       body.message ?? body.error ?? `Request failed (${response.status}).`
-    return new AuthApiError(message, 'HTTP_ERROR', response.status)
+    const code = body.error ?? 'HTTP_ERROR'
+    return new AuthApiError(message, code, response.status)
   } catch {
     return new AuthApiError(
       `Request failed (${response.status}).`,
@@ -62,11 +66,14 @@ async function parseError(response: Response): Promise<AuthApiError> {
   }
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const base = apiBaseUrl()
   if (!base) {
     throw new AuthApiError(
-      'Auth API is not configured yet (VITE_API_BASE_URL missing). Backend authentication arrives in Phase 07 — this is not a successful login.',
+      'Auth API is not configured (VITE_API_BASE_URL missing). Start the backend and set the frontend env.',
       'API_UNAVAILABLE',
     )
   }
@@ -74,9 +81,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${base}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body),
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...init.headers,
+      },
     })
   } catch {
     throw new AuthApiError(
@@ -92,14 +102,28 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T
 }
 
-/** POST /api/v1/auth/login — requires backend (Phase 07). */
+/** POST /api/v1/auth/login */
 export function login(input: LoginRequest): Promise<AuthSession> {
-  return postJson<AuthSession>('/api/v1/auth/login', input)
+  return requestJson<AuthSession>('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
-/** POST /api/v1/auth/register — requires backend (Phase 07). */
+/** POST /api/v1/auth/register */
 export function register(input: RegisterRequest): Promise<AuthSession> {
-  return postJson<AuthSession>('/api/v1/auth/register', input)
+  return requestJson<AuthSession>('/api/v1/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/** GET /api/v1/auth/me */
+export function fetchMe(token: string): Promise<{ user: AuthUser }> {
+  return requestJson<{ user: AuthUser }>('/api/v1/auth/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export function isAuthApiConfigured(): boolean {
