@@ -13,6 +13,7 @@ export const createMilestoneSchema = z.object({
     .trim()
     .min(2, 'Title must be at least 2 characters.')
     .max(200),
+  description: z.string().trim().max(5000).optional().nullable(),
   deliverables: z
     .string()
     .trim()
@@ -58,6 +59,7 @@ export const updateMilestoneSchema = z
       .min(2, 'Title must be at least 2 characters.')
       .max(200)
       .optional(),
+    description: z.string().trim().max(5000).optional().nullable(),
     deliverables: z
       .string()
       .trim()

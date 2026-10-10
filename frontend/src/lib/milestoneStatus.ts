@@ -90,11 +90,7 @@ const TRANSITION_ACTORS: Partial<
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   DISPUTED: {
-    IN_PROGRESS: ['ARBITRATOR'],
-    CANCELLED: ['ARBITRATOR'],
-    IN_REVIEW: ['ARBITRATOR'],
-    APPROVED: ['ARBITRATOR'],
-    REVISION_REQUESTED: ['ARBITRATOR'],
+    // Disputed milestones must be transitioned via the dispute resolution workflow.
   },
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Pencil, Trash2, Upload } from 'lucide-react'
 import { Alert } from '../../components/ui/Alert'
 import { Badge } from '../../components/ui/Badge'
@@ -9,7 +10,12 @@ import { Modal } from '../../components/ui/Modal'
 import { Panel } from '../../components/ui/Panel'
 import { Textarea } from '../../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
+<<<<<<< HEAD
 import type { Milestone, MilestoneExtension } from '../../lib/api/milestones'
+=======
+import { routes } from '../../lib/routes'
+import type { Milestone } from '../../lib/api/milestones'
+>>>>>>> origin/main
 import type {
   ReviewDecision,
   Submission,
@@ -181,7 +187,8 @@ export function MilestoneCard({
     return true
   })
 
-  const canManagePending = isClient && milestone.status === 'PENDING'
+  const canManagePending =
+    isClient && milestone.status === 'PENDING' && !milestone.agreementId
   const dueLabel = formatDateOnly(milestone.dueDate)
   const pendingExtension = extensions.find((e) => e.status === 'PROPOSED')
   const canProposeExtension =
@@ -271,6 +278,10 @@ export function MilestoneCard({
               Delete
             </Button>
           </div>
+        ) : isClient && milestone.agreementId ? (
+          <span className="font-mono text-[11px] text-dark/50 border border-dark/15 px-2 py-1">
+            Governed by agreement
+          </span>
         ) : null}
       </div>
 
@@ -299,6 +310,12 @@ export function MilestoneCard({
       {protectionNotice ? <Alert tone="warning">{protectionNotice}</Alert> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
+        {milestone.description &&
+        milestone.description !== milestone.deliverables ? (
+          <div className="sm:col-span-2">
+            <Field label="Description" value={milestone.description} />
+          </div>
+        ) : null}
         <Field label="Deliverables" value={milestone.deliverables} />
         <Field
           label="Acceptance criteria"
@@ -334,6 +351,18 @@ export function MilestoneCard({
           ) : null}
         </div>
       )}
+
+      {milestone.status === 'DISPUTED' ? (
+        <Alert tone="danger">
+          This milestone is currently disputed. Work and submissions are paused until the dispute is resolved.{' '}
+          <Link
+            to={routes.disputes(milestone.projectId)}
+            className="font-bold underline text-dark hover:text-accent ml-1"
+          >
+            View Dispute &amp; Resolution →
+          </Link>
+        </Alert>
+      ) : null}
 
       <div className="border-t-2 border-dark/10 pt-3 space-y-4">
         <SubmissionHistory
@@ -389,6 +418,7 @@ export function MilestoneCard({
         />
       ) : null}
 
+<<<<<<< HEAD
       {pendingExtension ? (
         <div className="border-t-2 border-dark/10 pt-3 space-y-2">
           <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
@@ -402,6 +432,27 @@ export function MilestoneCard({
           pendingExtension.proposedBy !== currentUserId &&
           (isClient || isFreelancer) ? (
             <div className="flex flex-wrap gap-2">
+=======
+      {milestone.status === 'DISPUTED' ? (
+        <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
+          <Link to={routes.disputes(milestone.projectId)}>
+            <Button size="sm" variant="danger">
+              Resolve in Disputes →
+            </Button>
+          </Link>
+        </div>
+      ) : actions.length > 0 ? (
+        <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
+          {actions.map((toStatus) => {
+            const needsNote = transitionRequiresNote(toStatus)
+            const variant =
+              toStatus === 'APPROVED'
+                ? 'primary'
+                : toStatus === 'DISPUTED'
+                  ? 'danger'
+                  : 'secondary'
+            return (
+>>>>>>> origin/main
               <Button
                 size="sm"
                 disabled={busy}
@@ -500,6 +551,10 @@ export function MilestoneCard({
         <p className="font-mono text-[11px] text-dark/50">
           Milestone approved. Release payment via the payments / escrow flow
           (local/test chain only).
+        </p>
+      ) : milestone.status === 'CANCELLED' ? (
+        <p className="font-mono text-[11px] text-dark/50">
+          Milestone cancelled. Work ended via dispute resolution.
         </p>
       ) : null}
 

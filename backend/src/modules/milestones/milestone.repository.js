@@ -1,5 +1,6 @@
 import { query } from '../../db/pool.js'
 
+<<<<<<< HEAD
 export async function insertMilestone({
   projectId,
   agreementId = null,
@@ -22,13 +23,44 @@ export async function insertMilestone({
        amount, due_date, review_window_days, grace_period_days, max_revisions,
        escalation_status, sort_order, created_by, status
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+=======
+export async function insertMilestone(
+  {
+    projectId,
+    agreementId = null,
+    title,
+    description = null,
+    deliverables,
+    acceptanceCriteria = null,
+    amount,
+    dueDate = null,
+    reviewWindowDays = null,
+    sortOrder = 0,
+    createdBy,
+    status = 'PENDING',
+  },
+  client,
+) {
+  const runner = client ?? { query }
+  const effectiveDeliverables = deliverables ?? description ?? ''
+  const effectiveCriteria =
+    acceptanceCriteria ?? description ?? deliverables ?? 'Deliverable accepted'
+  const effectiveDescription = description ?? deliverables ?? ''
+
+  const { rows } = await runner.query(
+    `INSERT INTO milestones (
+       project_id, agreement_id, title, description, deliverables, acceptance_criteria,
+       amount, due_date, review_window_days, sort_order, created_by, status
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+>>>>>>> origin/main
      RETURNING *`,
     [
       projectId,
       agreementId,
       title,
-      deliverables,
-      acceptanceCriteria,
+      effectiveDescription,
+      effectiveDeliverables,
+      effectiveCriteria,
       amount,
       dueDate,
       reviewWindowDays,
@@ -65,6 +97,7 @@ export async function updateMilestoneFields(id, fields) {
 
   const map = {
     title: 'title',
+    description: 'description',
     deliverables: 'deliverables',
     acceptanceCriteria: 'acceptance_criteria',
     amount: 'amount',
@@ -181,6 +214,7 @@ export function toPublicMilestone(row) {
     projectId: row.project_id,
     agreementId: row.agreement_id ?? null,
     title: row.title,
+    description: row.description ?? row.deliverables ?? '',
     deliverables: row.deliverables,
     acceptanceCriteria: row.acceptance_criteria,
     amount: Number(row.amount),
