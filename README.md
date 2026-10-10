@@ -1,6 +1,6 @@
-#Dijkstra's Gambit team
+# Dijkstra's Gambit team
 
-Arvin Almeida
-Anto Oswald
-Brendan Rodrigues
-Cyrus Selvaraj
+- Arvin Almeida
+- Anto Oswald
+- Brendan Rodrigues
+- Cyrus Selvaraj
