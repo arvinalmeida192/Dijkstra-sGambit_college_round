@@ -95,11 +95,17 @@ describe('milestone transitions', () => {
   })
 
   it('lists allowed transitions from each status', () => {
-    expect(listAllowedTransitions('PENDING')).toEqual(['IN_PROGRESS'])
+    expect(listAllowedTransitions('PENDING')).toEqual(
+      expect.arrayContaining(['IN_PROGRESS', 'CANCELLED']),
+    )
     expect(listAllowedTransitions('IN_REVIEW')).toEqual(
       expect.arrayContaining(['APPROVED', 'REVISION_REQUESTED', 'DISPUTED']),
     )
+    expect(listAllowedTransitions('OVERDUE')).toEqual(
+      expect.arrayContaining(['SUBMITTED', 'CANCELLED', 'DISPUTED']),
+    )
     expect(listAllowedTransitions('APPROVED')).toEqual([])
+    expect(listAllowedTransitions('CANCELLED')).toEqual([])
   })
 
   it('resolves actor roles from project participants', () => {
@@ -136,5 +142,32 @@ describe('milestone transitions', () => {
       transitionSideEffects('SUBMITTED', {}, now).submittedAt,
     ).toEqual(now)
     expect(transitionSideEffects('APPROVED', {}, now).approvedAt).toEqual(now)
+  })
+
+  it('starts review countdown at SUBMITTED when review window is set', () => {
+    const now = new Date('2026-10-10T12:00:00.000Z')
+    const effects = transitionSideEffects(
+      'SUBMITTED',
+      { review_window_days: 3 },
+      now,
+    )
+    expect(effects.reviewDueAt.toISOString()).toBe('2026-10-13T12:00:00.000Z')
+  })
+
+  it('allows system auto-approve from SUBMITTED / IN_REVIEW', () => {
+    expect(
+      assertMilestoneTransition({
+        fromStatus: 'SUBMITTED',
+        toStatus: 'APPROVED',
+        actorRole: 'SYSTEM',
+      }).toStatus,
+    ).toBe('APPROVED')
+    expect(
+      assertMilestoneTransition({
+        fromStatus: 'IN_REVIEW',
+        toStatus: 'APPROVED',
+        actorRole: 'SYSTEM',
+      }).toStatus,
+    ).toBe('APPROVED')
   })
 })

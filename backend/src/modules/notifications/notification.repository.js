@@ -93,7 +93,22 @@ export async function listMilestonesForDeadlineScan() {
      FROM milestones m
      JOIN projects p ON p.id = m.project_id
      WHERE m.due_date IS NOT NULL
-       AND m.status NOT IN ('APPROVED')
+       AND m.status NOT IN ('APPROVED', 'CANCELLED', 'DISPUTED')
+       AND p.status = 'ACTIVE'`,
+  )
+  return rows
+}
+
+/** Active milestones currently submitted or in review. */
+export async function listMilestonesForReviewScan() {
+  const { rows } = await query(
+    `SELECT m.*,
+            p.client_id,
+            p.freelancer_id,
+            p.title AS project_title
+     FROM milestones m
+     JOIN projects p ON p.id = m.project_id
+     WHERE m.status IN ('SUBMITTED', 'IN_REVIEW')
        AND p.status = 'ACTIVE'`,
   )
   return rows
@@ -129,6 +144,16 @@ export async function listMilestonesForInactivityScan({ inactivityDays }) {
     [Number(inactivityDays)],
   )
   return rows
+}
+
+export async function hasOpenDispute(milestoneId) {
+  const { rows } = await query(
+    `SELECT id FROM disputes
+     WHERE milestone_id = $1 AND status IN ('OPEN', 'UNDER_REVIEW')
+     LIMIT 1`,
+    [milestoneId],
+  )
+  return rows.length > 0
 }
 
 export function toPublicNotification(row) {

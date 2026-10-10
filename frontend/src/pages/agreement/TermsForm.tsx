@@ -14,6 +14,8 @@ type MilestoneDraft = {
   amountMajor: string
   dueDate: string
   reviewWindowDays: string
+  gracePeriodDays: string
+  maxRevisions: string
 }
 
 type TermsFormProps = {
@@ -31,7 +33,9 @@ function emptyMilestone(): MilestoneDraft {
     acceptanceCriteria: '',
     amountMajor: '',
     dueDate: '',
-    reviewWindowDays: '',
+    reviewWindowDays: '7',
+    gracePeriodDays: '3',
+    maxRevisions: '3',
   }
 }
 
@@ -53,7 +57,10 @@ function fromTerms(terms?: AgreementTermsInput): {
       amountMajor: (m.amount / 100).toFixed(2),
       dueDate: m.dueDate ?? '',
       reviewWindowDays:
-        m.reviewWindowDays != null ? String(m.reviewWindowDays) : '',
+        m.reviewWindowDays != null ? String(m.reviewWindowDays) : '7',
+      gracePeriodDays:
+        m.gracePeriodDays != null ? String(m.gracePeriodDays) : '3',
+      maxRevisions: m.maxRevisions != null ? String(m.maxRevisions) : '3',
     })),
   }
 }
@@ -113,7 +120,7 @@ export function TermsForm({
       if (m.dueDate.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(m.dueDate.trim())) {
         errors[`${prefix}.dueDate`] = 'Use YYYY-MM-DD.'
       }
-      let reviewWindowDays: number | undefined
+      let reviewWindowDays: number | undefined = 7
       if (m.reviewWindowDays.trim()) {
         const n = Number(m.reviewWindowDays)
         if (!Number.isInteger(n) || n < 1) {
@@ -123,13 +130,35 @@ export function TermsForm({
         }
       }
 
+      let gracePeriodDays: number | undefined = 3
+      if (m.gracePeriodDays.trim()) {
+        const n = Number(m.gracePeriodDays)
+        if (!Number.isInteger(n) || n < 0) {
+          errors[`${prefix}.gracePeriodDays`] = 'Enter a non-negative integer.'
+        } else {
+          gracePeriodDays = n
+        }
+      }
+
+      let maxRevisions: number | undefined = 3
+      if (m.maxRevisions.trim()) {
+        const n = Number(m.maxRevisions)
+        if (!Number.isInteger(n) || n < 1) {
+          errors[`${prefix}.maxRevisions`] = 'Enter a positive integer.'
+        } else {
+          maxRevisions = n
+        }
+      }
+
       if (
         !errors[`${prefix}.title`] &&
         !errors[`${prefix}.deliverables`] &&
         !errors[`${prefix}.acceptanceCriteria`] &&
         !errors[`${prefix}.amount`] &&
         !errors[`${prefix}.dueDate`] &&
-        !errors[`${prefix}.reviewWindowDays`]
+        !errors[`${prefix}.reviewWindowDays`] &&
+        !errors[`${prefix}.gracePeriodDays`] &&
+        !errors[`${prefix}.maxRevisions`]
       ) {
         parsedMilestones.push({
           title: m.title.trim(),
@@ -138,6 +167,8 @@ export function TermsForm({
           amount: amount!,
           dueDate: m.dueDate.trim() || undefined,
           reviewWindowDays,
+          gracePeriodDays,
+          maxRevisions,
         })
       }
     })
@@ -299,6 +330,30 @@ export function TermsForm({
                   updateMilestone(index, { reviewWindowDays: e.target.value })
                 }
                 error={fieldErrors[`m${index}.reviewWindowDays`]}
+                disabled={busy}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Grace period (days)"
+                name={`m${index}-grace`}
+                inputMode="numeric"
+                value={m.gracePeriodDays}
+                onChange={(e) =>
+                  updateMilestone(index, { gracePeriodDays: e.target.value })
+                }
+                error={fieldErrors[`m${index}.gracePeriodDays`]}
+                disabled={busy}
+              />
+              <Input
+                label="Max revision rounds"
+                name={`m${index}-revisions`}
+                inputMode="numeric"
+                value={m.maxRevisions}
+                onChange={(e) =>
+                  updateMilestone(index, { maxRevisions: e.target.value })
+                }
+                error={fieldErrors[`m${index}.maxRevisions`]}
                 disabled={busy}
               />
             </div>

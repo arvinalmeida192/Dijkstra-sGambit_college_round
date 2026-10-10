@@ -1,5 +1,6 @@
 import { apiRequest } from './client'
 import type { MilestoneStatus } from '../milestoneStatus'
+import type { Payment } from './payments'
 
 export type Milestone = {
   id: string
@@ -11,6 +12,9 @@ export type Milestone = {
   amount: number
   dueDate: string | null
   reviewWindowDays: number | null
+  gracePeriodDays: number
+  maxRevisions: number
+  escalationStatus: string
   status: MilestoneStatus
   sortOrder: number
   createdBy: string
@@ -22,6 +26,9 @@ export type Milestone = {
   createdAt: string
   updatedAt: string
   allowedTransitions: MilestoneStatus[]
+  nextAction?: string
+  actionOwner?: string
+  actionDueAt?: string | null
 }
 
 export type MilestoneInput = {
@@ -31,6 +38,8 @@ export type MilestoneInput = {
   amount: number
   dueDate?: string | null
   reviewWindowDays?: number | null
+  gracePeriodDays?: number | null
+  maxRevisions?: number | null
   agreementId?: string | null
   sortOrder?: number
 }
@@ -44,9 +53,37 @@ export type MilestoneUpdateInput = Partial<
     | 'amount'
     | 'dueDate'
     | 'reviewWindowDays'
+    | 'gracePeriodDays'
+    | 'maxRevisions'
     | 'sortOrder'
   >
 >
+
+export type MilestoneExtension = {
+  id: string
+  milestoneId: string
+  projectId: string
+  proposedBy: string
+  newDueDate: string
+  reason: string
+  status: 'PROPOSED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN'
+  respondedBy: string | null
+  responseNote: string | null
+  createdAt: string
+  respondedAt: string | null
+}
+
+export type AuditLog = {
+  id: string
+  actorId: string | null
+  actor: string
+  projectId: string | null
+  milestoneId: string | null
+  submissionId: string | null
+  action: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
 
 function auth(token: string) {
   return { token }
@@ -124,5 +161,81 @@ export function updateMilestoneStatus(
       method: 'PATCH',
       body: input,
     },
+  )
+}
+
+export function listExtensions(token: string, milestoneId: string) {
+  return apiRequest<{ extensions: MilestoneExtension[] }>(
+    `/api/v1/milestones/${milestoneId}/extensions`,
+    { ...auth(token), method: 'GET' },
+  )
+}
+
+export function proposeExtension(
+  token: string,
+  milestoneId: string,
+  input: { newDueDate: string; reason: string },
+) {
+  return apiRequest<{ extension: MilestoneExtension }>(
+    `/api/v1/milestones/${milestoneId}/extensions`,
+    { ...auth(token), method: 'POST', body: input },
+  )
+}
+
+export function respondExtension(
+  token: string,
+  milestoneId: string,
+  extensionId: string,
+  input: { decision: 'ACCEPT' | 'REJECT'; responseNote?: string | null },
+) {
+  return apiRequest<{ extension: MilestoneExtension; milestone: Milestone }>(
+    `/api/v1/milestones/${milestoneId}/extensions/${extensionId}/respond`,
+    { ...auth(token), method: 'POST', body: input },
+  )
+}
+
+export function cancelAndReclaimMilestone(
+  token: string,
+  milestoneId: string,
+  input: { reason?: string | null } = {},
+) {
+  return apiRequest<{ milestone: Milestone; notice: string }>(
+    `/api/v1/milestones/${milestoneId}/cancel-and-reclaim`,
+    { ...auth(token), method: 'POST', body: input },
+  )
+}
+
+export function executeAutoRelease(token: string, milestoneId: string) {
+  return apiRequest<{
+    submitted: boolean
+    txHash?: string
+    payment?: Payment
+    notice?: string
+    reason?: string
+  }>(`/api/v1/milestones/${milestoneId}/execute-auto-release`, {
+    ...auth(token),
+    method: 'POST',
+    body: {},
+  })
+}
+
+export function executeReclaim(token: string, milestoneId: string) {
+  return apiRequest<{
+    submitted: boolean
+    txHash?: string
+    payment?: Payment
+    notice?: string
+    reason?: string
+  }>(`/api/v1/milestones/${milestoneId}/execute-reclaim`, {
+    ...auth(token),
+    method: 'POST',
+    body: {},
+  })
+}
+
+export function listProjectAuditLogs(token: string, projectId: string) {
+  return apiRequest<{ auditLogs: AuditLog[] }>(
+    `/api/v1/projects/${projectId}/audit-logs`,
+    { ...auth(token), method: 'GET' },
   )
 }

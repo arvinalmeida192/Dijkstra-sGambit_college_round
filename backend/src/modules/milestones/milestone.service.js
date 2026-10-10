@@ -3,16 +3,37 @@ import {
   forbidden,
   notFound,
 } from '../../utils/errors.js'
+import { withTransaction } from '../../db/pool.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
 import { findAgreementById } from '../agreements/agreement.repository.js'
 import {
+  insertAuditLog,
+  listSubmissionsForMilestone,
+} from '../submissions/submission.repository.js'
+import { findOpenDisputeForMilestone } from '../disputes/dispute.repository.js'
+import {
+  listAuditLogsForProject,
+  toPublicAuditLog,
+} from '../submissions/submission.repository.js'
+import {
+  deadlineWithGraceDate,
+  executeAutoRelease,
+  executeReclaim,
+} from './milestone.protection.js'
+import {
   applyStatusPatch,
   deleteMilestone,
+  findActiveExtensionForMilestone,
+  findExtensionById,
   findMilestoneById,
+  insertExtension,
   insertMilestone,
+  listExtensionsForMilestone,
   listMilestonesForProject,
+  toPublicExtension,
   toPublicMilestone,
+  updateExtensionResponse,
   updateMilestoneFields,
 } from './milestone.repository.js'
 import {
@@ -29,10 +50,74 @@ function assertClientOwner(project, user) {
   }
 }
 
+export function computeMilestoneProtectionMeta(milestone) {
+  let nextAction = 'Start work on milestone'
+  let actionOwner = 'FREELANCER'
+  let actionDueAt = milestone.dueDate ? `${milestone.dueDate}T23:59:59.000Z` : null
+
+  switch (milestone.status) {
+    case 'PENDING':
+      nextAction = 'Start work on milestone'
+      actionOwner = 'FREELANCER'
+      break
+    case 'IN_PROGRESS':
+      nextAction = 'Submit deliverable'
+      actionOwner = 'FREELANCER'
+      actionDueAt = milestone.dueDate ? `${milestone.dueDate}T23:59:59.000Z` : null
+      break
+    case 'OVERDUE':
+      nextAction = 'Submit deliverable or request extension; Client may cancel and reclaim'
+      actionOwner = 'FREELANCER'
+      actionDueAt = null
+      break
+    case 'SUBMITTED':
+    case 'IN_REVIEW':
+      nextAction = 'Review submission'
+      actionOwner = 'CLIENT'
+      actionDueAt = milestone.reviewDueAt ?? null
+      break
+    case 'REVISION_REQUESTED':
+      nextAction = 'Address revision feedback and resubmit'
+      actionOwner = 'FREELANCER'
+      actionDueAt = milestone.dueDate ? `${milestone.dueDate}T23:59:59.000Z` : null
+      break
+    case 'DISPUTED':
+      nextAction = 'Arbitrator review and ruling'
+      actionOwner = 'ARBITRATOR'
+      actionDueAt = null
+      break
+    case 'APPROVED':
+      if (milestone.escalationStatus === 'AUTO_APPROVED') {
+        nextAction = 'Execute auto-release (or report release tx on Payments)'
+        actionOwner = 'CLIENT'
+      } else {
+        nextAction = 'Release payment from escrow'
+        actionOwner = 'CLIENT'
+      }
+      actionDueAt = null
+      break
+    case 'CANCELLED':
+      nextAction =
+        milestone.escalationStatus === 'CANCELLED_RECLAIMED'
+          ? 'Execute reclaim (or report reclaim tx on Payments)'
+          : 'Milestone cancelled'
+      actionOwner = 'CLIENT'
+      actionDueAt = null
+      break
+    default:
+      break
+  }
+
+  return { nextAction, actionOwner, actionDueAt }
+}
+
 function withAllowedTransitions(milestone) {
+  const pub = toPublicMilestone(milestone)
+  const meta = computeMilestoneProtectionMeta(pub)
   return {
-    ...toPublicMilestone(milestone),
-    allowedTransitions: listAllowedTransitions(milestone.status),
+    ...pub,
+    allowedTransitions: listAllowedTransitions(pub.status),
+    ...meta,
   }
 }
 
@@ -88,7 +173,9 @@ export async function createMilestone(user, projectId, input) {
     acceptanceCriteria: input.acceptanceCriteria,
     amount: input.amount,
     dueDate: input.dueDate ?? null,
-    reviewWindowDays: input.reviewWindowDays ?? null,
+    reviewWindowDays: input.reviewWindowDays ?? 7,
+    gracePeriodDays: input.gracePeriodDays ?? 3,
+    maxRevisions: input.maxRevisions ?? 3,
     sortOrder: input.sortOrder ?? 0,
     createdBy: user.id,
   })
@@ -129,6 +216,12 @@ export async function updateMilestone(user, milestoneId, input) {
       : {}),
     ...(Object.prototype.hasOwnProperty.call(input, 'reviewWindowDays')
       ? { reviewWindowDays: input.reviewWindowDays }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(input, 'gracePeriodDays')
+      ? { gracePeriodDays: input.gracePeriodDays }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(input, 'maxRevisions')
+      ? { maxRevisions: input.maxRevisions }
       : {}),
     ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
   })
@@ -204,4 +297,190 @@ export async function changeMilestoneStatus(user, milestoneId, input) {
 
   const row = await applyStatusPatch(milestoneId, patch)
   return withAllowedTransitions(row)
+}
+
+export async function listExtensions(user, milestoneId) {
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone) throw notFound('Milestone not found.')
+  const project = await loadProjectForMilestone(milestone)
+  assertParticipant(project, user)
+
+  const rows = await listExtensionsForMilestone(milestoneId)
+  return { extensions: rows.map(toPublicExtension) }
+}
+
+export async function proposeExtension(user, milestoneId, input) {
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone) throw notFound('Milestone not found.')
+  const project = await loadProjectForMilestone(milestone)
+  assertParticipant(project, user)
+
+  if (milestone.status === 'APPROVED' || milestone.status === 'CANCELLED') {
+    throw conflict(`Cannot propose an extension on an ${milestone.status.toLowerCase()} milestone.`)
+  }
+
+  const existingActive = await findActiveExtensionForMilestone(milestoneId)
+  if (existingActive) {
+    throw conflict('There is already a pending extension proposal for this milestone.')
+  }
+
+  const row = await insertExtension({
+    milestoneId,
+    projectId: project.id,
+    proposedBy: user.id,
+    newDueDate: input.newDueDate,
+    reason: input.reason.trim(),
+  })
+
+  await insertAuditLog({
+    actorId: user.id,
+    projectId: project.id,
+    milestoneId,
+    action: 'EXTENSION_PROPOSED',
+    metadata: {
+      extensionId: row.id,
+      newDueDate: input.newDueDate,
+      reason: input.reason.trim(),
+    },
+  })
+
+  return toPublicExtension(row)
+}
+
+export async function respondExtension(user, milestoneId, extensionId, input) {
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone) throw notFound('Milestone not found.')
+  const project = await loadProjectForMilestone(milestone)
+  assertParticipant(project, user)
+
+  const extension = await findExtensionById(extensionId)
+  if (!extension || extension.milestone_id !== milestoneId) {
+    throw notFound('Extension proposal not found.')
+  }
+
+  if (extension.status !== 'PROPOSED') {
+    throw conflict(`Extension proposal is already ${extension.status.toLowerCase()}.`)
+  }
+
+  if (extension.proposed_by === user.id) {
+    throw forbidden('You cannot accept or reject your own extension proposal.')
+  }
+
+  const decision = input.decision
+  const updatedExtension = await updateExtensionResponse(extensionId, {
+    respondedBy: user.id,
+    status: decision === 'ACCEPT' ? 'ACCEPTED' : 'REJECTED',
+    responseNote: input.responseNote?.trim() ?? null,
+  })
+
+  let updatedMilestone = milestone
+  if (decision === 'ACCEPT') {
+    const patch = { dueDate: extension.new_due_date }
+    if (milestone.status === 'OVERDUE') {
+      patch.status = 'IN_PROGRESS'
+      patch.statusNote = 'Resumed in progress following accepted deadline extension.'
+      patch.escalationStatus = 'NONE'
+    }
+    updatedMilestone = await applyStatusPatch(milestoneId, patch)
+  }
+
+  await insertAuditLog({
+    actorId: user.id,
+    projectId: project.id,
+    milestoneId,
+    action: decision === 'ACCEPT' ? 'EXTENSION_ACCEPTED' : 'EXTENSION_REJECTED',
+    metadata: {
+      extensionId,
+      decision,
+      newDueDate: extension.new_due_date,
+      responseNote: input.responseNote ?? null,
+    },
+  })
+
+  return {
+    extension: toPublicExtension(updatedExtension),
+    milestone: withAllowedTransitions(updatedMilestone),
+  }
+}
+
+export async function cancelAndReclaimMilestone(user, milestoneId, input = {}) {
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone) throw notFound('Milestone not found.')
+  const project = await loadProjectForMilestone(milestone)
+  assertClientOwner(project, user)
+
+  if (milestone.status === 'APPROVED' || milestone.status === 'CANCELLED') {
+    throw conflict(`Cannot cancel a ${milestone.status.toLowerCase()} milestone.`)
+  }
+
+  if (milestone.status === 'DISPUTED') {
+    throw conflict('Cannot cancel and reclaim while the milestone is in an active dispute.')
+  }
+
+  const openDispute = await findOpenDisputeForMilestone(milestoneId)
+  if (openDispute) {
+    throw conflict('Cannot cancel and reclaim while an open dispute exists on this milestone.')
+  }
+
+  // Verify non-delivery: no submissions may exist
+  const submissions = await listSubmissionsForMilestone(milestoneId)
+  if (submissions.length > 0) {
+    throw conflict(
+      'Cannot cancel and reclaim: work has been submitted. Review the submission or open a dispute.',
+    )
+  }
+
+  // Must be OVERDUE or past deadline + grace (end of due-date UTC day + grace)
+  let isEligible = milestone.status === 'OVERDUE'
+  if (!isEligible) {
+    const graceExpiry = deadlineWithGraceDate(milestone)
+    if (graceExpiry && Date.now() > graceExpiry.getTime()) {
+      isEligible = true
+    }
+  }
+
+  if (!isEligible) {
+    throw conflict(
+      'Milestone is not eligible for cancellation and reclaim. Deadline plus grace period has not expired.',
+    )
+  }
+
+  const reason = input.reason?.trim() || 'Milestone cancelled and reclaimed by client due to non-delivery.'
+  const updated = await applyStatusPatch(milestoneId, {
+    status: 'CANCELLED',
+    statusNote: reason,
+    escalationStatus: 'CANCELLED_RECLAIMED',
+  })
+
+  await insertAuditLog({
+    actorId: user.id,
+    projectId: project.id,
+    milestoneId,
+    action: 'MILESTONE_CANCELLED_RECLAIMED',
+    metadata: {
+      reason,
+      cancelledAt: new Date().toISOString(),
+    },
+  })
+
+  return {
+    milestone: withAllowedTransitions(updated),
+    notice:
+      'Milestone cancelled in the application. If escrow was funded on-chain, use Execute reclaim (operator) or report reclaimUndeliveredMilestone via Payments.',
+  }
+}
+
+export async function executeMilestoneAutoRelease(user, milestoneId) {
+  return executeAutoRelease(user, milestoneId)
+}
+
+export async function executeMilestoneReclaim(user, milestoneId) {
+  return executeReclaim(user, milestoneId)
+}
+
+export async function listProjectAuditLogs(user, projectId) {
+  const project = await findProjectById(projectId)
+  assertParticipant(project, user)
+  const rows = await listAuditLogsForProject(projectId)
+  return { auditLogs: rows.map(toPublicAuditLog) }
 }

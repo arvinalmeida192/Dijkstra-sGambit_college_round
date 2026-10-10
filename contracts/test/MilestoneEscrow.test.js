@@ -469,4 +469,200 @@ describe('MilestoneEscrow', function () {
       ).to.be.revertedWithCustomError(escrow, 'InvalidState')
     })
   })
+
+  describe('participant protection (deadlines, auto-release, dispute freeze)', function () {
+    it('auto-releases to freelancer after review window expires', async function () {
+      const { client, freelancer, arbitrator, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId, amount } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      const latestBlock = await ethers.provider.getBlock('latest')
+      const reviewDueAt = BigInt(latestBlock.timestamp) + 100n
+
+      await escrow
+        .connect(client)
+        .setMilestoneProtection(agreementId, milestoneId, 0n, reviewDueAt)
+
+      // Before expiry: reverts
+      await expect(
+        escrow.autoReleaseMilestone(agreementId, milestoneId),
+      ).to.be.revertedWithCustomError(escrow, 'ReviewWindowNotExpired')
+
+      // Advance time past review window
+      await ethers.provider.send('evm_increaseTime', [150])
+      await ethers.provider.send('evm_mine')
+
+      const freelancerBefore = await token.balanceOf(freelancer.address)
+      await expect(
+        escrow.autoReleaseMilestone(agreementId, milestoneId),
+      )
+        .to.emit(escrow, 'MilestoneReleased')
+        .withArgs(agreementId, milestoneId, freelancer.address, amount)
+        .to.emit(escrow, 'MilestoneAutoReleased')
+        .withArgs(agreementId, milestoneId, freelancer.address, amount)
+
+      expect(await token.balanceOf(freelancer.address)).to.equal(
+        freelancerBefore + amount,
+      )
+      expect((await escrow.getMilestone(agreementId, milestoneId)).state).to.equal(3n) // Released
+    })
+
+    it('blocks auto-release when milestone is disputed', async function () {
+      const { client, freelancer, arbitrator, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      const latestBlock = await ethers.provider.getBlock('latest')
+      const reviewDueAt = BigInt(latestBlock.timestamp) + 100n
+      await escrow
+        .connect(client)
+        .setMilestoneProtection(agreementId, milestoneId, 0n, reviewDueAt)
+
+      // Open dispute
+      await escrow.connect(client).openDispute(agreementId, milestoneId)
+
+      // Advance time past review window
+      await ethers.provider.send('evm_increaseTime', [200])
+      await ethers.provider.send('evm_mine')
+
+      // Auto-release must revert because state is Disputed
+      await expect(
+        escrow.autoReleaseMilestone(agreementId, milestoneId),
+      ).to.be.revertedWithCustomError(escrow, 'InvalidState')
+    })
+
+    it('reclaims undelivered funds to client after deadline with grace passes', async function () {
+      const { client, freelancer, arbitrator, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId, amount } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      const latestBlock = await ethers.provider.getBlock('latest')
+      const deadlineWithGrace = BigInt(latestBlock.timestamp) + 200n
+
+      await escrow
+        .connect(client)
+        .setMilestoneProtection(agreementId, milestoneId, deadlineWithGrace, 0n)
+
+      // Before deadline: reverts
+      await expect(
+        escrow.connect(client).reclaimUndeliveredMilestone(agreementId, milestoneId),
+      ).to.be.revertedWithCustomError(escrow, 'DeadlineNotPassed')
+
+      // Advance time past deadline + grace
+      await ethers.provider.send('evm_increaseTime', [250])
+      await ethers.provider.send('evm_mine')
+
+      const clientBefore = await token.balanceOf(client.address)
+      await expect(
+        escrow.connect(client).reclaimUndeliveredMilestone(agreementId, milestoneId),
+      )
+        .to.emit(escrow, 'MilestoneRefunded')
+        .withArgs(agreementId, milestoneId, client.address, amount)
+        .to.emit(escrow, 'MilestoneReclaimed')
+        .withArgs(agreementId, milestoneId, client.address, amount)
+
+      expect(await token.balanceOf(client.address)).to.equal(clientBefore + amount)
+      expect((await escrow.getMilestone(agreementId, milestoneId)).state).to.equal(4n) // Refunded
+    })
+
+    it('blocks reclaim when milestone is disputed', async function () {
+      const { client, freelancer, arbitrator, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      const latestBlock = await ethers.provider.getBlock('latest')
+      const deadlineWithGrace = BigInt(latestBlock.timestamp) + 100n
+      await escrow
+        .connect(client)
+        .setMilestoneProtection(agreementId, milestoneId, deadlineWithGrace, 0n)
+
+      // Freelancer opens dispute
+      await escrow.connect(freelancer).openDispute(agreementId, milestoneId)
+
+      // Advance time past deadline
+      await ethers.provider.send('evm_increaseTime', [200])
+      await ethers.provider.send('evm_mine')
+
+      // Reclaim must revert because state is Disputed
+      await expect(
+        escrow.connect(client).reclaimUndeliveredMilestone(agreementId, milestoneId),
+      ).to.be.revertedWithCustomError(escrow, 'InvalidState')
+    })
+
+    it('allows protection operator to configure and reclaim', async function () {
+      const { deployer, client, freelancer, arbitrator, outsider, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId, amount } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      await expect(escrow.connect(deployer).setProtectionOperator(outsider.address))
+        .to.emit(escrow, 'ProtectionOperatorUpdated')
+        .withArgs(ethers.ZeroAddress, outsider.address)
+
+      const latestBlock = await ethers.provider.getBlock('latest')
+      const deadlineWithGrace = BigInt(latestBlock.timestamp) + 50n
+      await escrow
+        .connect(outsider)
+        .setMilestoneProtection(agreementId, milestoneId, deadlineWithGrace, 0n)
+
+      await ethers.provider.send('evm_increaseTime', [80])
+      await ethers.provider.send('evm_mine')
+
+      const clientBefore = await token.balanceOf(client.address)
+      await expect(
+        escrow.connect(outsider).reclaimUndeliveredMilestone(agreementId, milestoneId),
+      )
+        .to.emit(escrow, 'MilestoneReclaimed')
+        .withArgs(agreementId, milestoneId, client.address, amount)
+
+      expect(await token.balanceOf(client.address)).to.equal(clientBefore + amount)
+    })
+
+    it('rejects outsider configure/reclaim without operator role', async function () {
+      const { client, freelancer, arbitrator, outsider, token, escrow } =
+        await deployFixture()
+      const { agreementId, milestoneId } = await createFundedMilestone(
+        escrow,
+        token,
+        client,
+        freelancer,
+        arbitrator,
+      )
+
+      await expect(
+        escrow
+          .connect(outsider)
+          .setMilestoneProtection(agreementId, milestoneId, 1n, 0n),
+      ).to.be.revertedWithCustomError(escrow, 'Unauthorized')
+    })
+  })
 })

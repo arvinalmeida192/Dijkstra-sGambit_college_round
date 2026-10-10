@@ -79,15 +79,22 @@ export async function listSubmissionsForMilestone(milestoneId, client) {
 }
 
 export async function insertReview(
-  { submissionId, milestoneId, reviewerId, decision, feedback = null },
+  { submissionId, milestoneId, reviewerId, decision, feedback = null, unmetCriteria = [] },
   client,
 ) {
   const { rows } = await db(client).query(
     `INSERT INTO reviews (
-       submission_id, milestone_id, reviewer_id, decision, feedback
-     ) VALUES ($1, $2, $3, $4, $5)
+       submission_id, milestone_id, reviewer_id, decision, feedback, unmet_criteria
+     ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      RETURNING *`,
-    [submissionId, milestoneId, reviewerId, decision, feedback],
+    [
+      submissionId,
+      milestoneId,
+      reviewerId,
+      decision,
+      feedback,
+      JSON.stringify(unmetCriteria ?? []),
+    ],
   )
   return rows[0]
 }
@@ -140,6 +147,32 @@ export async function insertAuditLog(
   return rows[0]
 }
 
+export async function listAuditLogsForProject(projectId, { limit = 100 } = {}) {
+  const { rows } = await query(
+    `SELECT * FROM audit_logs
+     WHERE project_id = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [projectId, Math.min(Number(limit) || 100, 500)],
+  )
+  return rows
+}
+
+export function toPublicAuditLog(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    actorId: row.actor_id ?? null,
+    actor: row.actor_id ? 'user' : 'system',
+    projectId: row.project_id ?? null,
+    milestoneId: row.milestone_id ?? null,
+    submissionId: row.submission_id ?? null,
+    action: row.action,
+    metadata: row.metadata ?? {},
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+  }
+}
+
 export function toPublicSubmission(row) {
   if (!row) return null
   return {
@@ -175,6 +208,11 @@ export function toPublicReview(row) {
     reviewerId: row.reviewer_id,
     decision: row.decision,
     feedback: row.feedback ?? null,
+    unmetCriteria: Array.isArray(row.unmet_criteria)
+      ? row.unmet_criteria
+      : typeof row.unmet_criteria === 'string'
+        ? JSON.parse(row.unmet_criteria)
+        : [],
     createdAt: row.created_at?.toISOString?.() ?? row.created_at,
   }
 }

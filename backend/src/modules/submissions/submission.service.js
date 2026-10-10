@@ -36,7 +36,11 @@ import {
   toPublicSubmission,
 } from './submission.repository.js'
 
-const SUBMITTABLE_STATUSES = new Set(['IN_PROGRESS', 'REVISION_REQUESTED'])
+const SUBMITTABLE_STATUSES = new Set([
+  'IN_PROGRESS',
+  'REVISION_REQUESTED',
+  'OVERDUE',
+])
 
 function withAllowedTransitions(milestone) {
   return {
@@ -351,8 +355,45 @@ export async function reviewSubmission(user, submissionId, input) {
     throw forbidden('Freelancers cannot approve their own submission.')
   }
 
+  if (input.decision === 'REVISION_REQUESTED') {
+    const previousReviews = await listReviewsForMilestone(milestone.id)
+    const revisionRequests = previousReviews.filter(
+      (r) => r.decision === 'REVISION_REQUESTED',
+    )
+    const maxRevisions = milestone.max_revisions ?? 3
+    if (revisionRequests.length >= maxRevisions) {
+      throw conflict(
+        `Maximum revision limit (${maxRevisions} rounds) reached. At this limit, you may only Approve or Open dispute.`,
+      )
+    }
+
+    if (!input.unmetCriteria || input.unmetCriteria.length === 0) {
+      throw conflict(
+        'At least one specific unmet acceptance criterion must be specified when requesting a revision.',
+      )
+    }
+
+    const criteriaLines = String(milestone.acceptance_criteria ?? '')
+      .split(/\r?\n|;/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const normalized = new Set(criteriaLines.map((s) => s.toLowerCase()))
+    // If criteria are a single paragraph, allow selecting that whole text.
+    if (normalized.size === 0 && milestone.acceptance_criteria?.trim()) {
+      normalized.add(milestone.acceptance_criteria.trim().toLowerCase())
+    }
+    for (const item of input.unmetCriteria) {
+      if (!normalized.has(String(item).trim().toLowerCase())) {
+        throw conflict(
+          'unmetCriteria must reference specific acceptance criteria from the milestone.',
+        )
+      }
+    }
+  }
+
   const feedback =
     input.feedback?.trim() ? input.feedback.trim() : null
+  const unmetCriteria = input.unmetCriteria ?? []
 
   const result = await withTransaction(async (client) => {
     const updatedMilestone = await moveToReviewDecision(client, {
@@ -370,6 +411,7 @@ export async function reviewSubmission(user, submissionId, input) {
         reviewerId: user.id,
         decision: input.decision,
         feedback,
+        unmetCriteria,
       },
       client,
     )
@@ -385,10 +427,35 @@ export async function reviewSubmission(user, submissionId, input) {
           decision: input.decision,
           revision: submission.revision,
           milestoneStatus: updatedMilestone.status,
+          unmetCriteria,
         },
       },
       client,
     )
+
+    if (input.decision === 'REVISION_REQUESTED') {
+      const allReviews = await listReviewsForMilestone(milestone.id, client)
+      const totalRevisions = allReviews.filter(
+        (r) => r.decision === 'REVISION_REQUESTED',
+      ).length
+      const maxRevisions = milestone.max_revisions ?? 3
+      if (totalRevisions >= maxRevisions) {
+        await insertAuditLog(
+          {
+            actorId: user.id,
+            projectId: project.id,
+            milestoneId: milestone.id,
+            submissionId: submission.id,
+            action: 'REVISION_LIMIT_REACHED',
+            metadata: {
+              maxRevisions,
+              totalRevisions,
+            },
+          },
+          client,
+        )
+      }
+    }
 
     return { review, updatedMilestone }
   })

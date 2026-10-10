@@ -23,16 +23,25 @@ describe('submission validation', () => {
     ).toThrow(AppError)
   })
 
-  it('requires feedback for REVISION_REQUESTED', () => {
+  it('requires feedback and unmetCriteria for REVISION_REQUESTED', () => {
     expect(() =>
       parseBody(reviewSubmissionSchema, { decision: 'REVISION_REQUESTED' }),
+    ).toThrow(AppError)
+
+    expect(() =>
+      parseBody(reviewSubmissionSchema, {
+        decision: 'REVISION_REQUESTED',
+        feedback: 'Please fix spacing',
+      }),
     ).toThrow(AppError)
 
     const ok = parseBody(reviewSubmissionSchema, {
       decision: 'REVISION_REQUESTED',
       feedback: 'Please fix spacing',
+      unmetCriteria: ['Approved mockups'],
     })
     expect(ok.feedback).toBe('Please fix spacing')
+    expect(ok.unmetCriteria).toEqual(['Approved mockups'])
   })
 
   it('allows APPROVED without feedback', () => {

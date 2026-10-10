@@ -6,6 +6,7 @@ export const MILESTONE_STATUSES = [
   'REVISION_REQUESTED',
   'APPROVED',
   'DISPUTED',
+  'OVERDUE',
   'CANCELLED',
 ] as const
 
@@ -16,6 +17,15 @@ export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
 /** Project-relative actor for transition UX (server still enforces). */
 export type MilestoneActorRole = 'CLIENT' | 'FREELANCER' | 'ARBITRATOR'
 
+export type EscalationStatus =
+  | 'NONE'
+  | 'REMINDER_SENT'
+  | 'WARNING_SENT'
+  | 'ACTION_ELIGIBLE'
+  | 'AUTO_APPROVED'
+  | 'CANCELLED_RECLAIMED'
+  | string
+
 export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
   PENDING: 'Pending',
   IN_PROGRESS: 'In Progress',
@@ -24,6 +34,7 @@ export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
   REVISION_REQUESTED: 'Revision Requested',
   APPROVED: 'Approved',
   DISPUTED: 'Disputed',
+  OVERDUE: 'Overdue',
   CANCELLED: 'Cancelled',
 }
 
@@ -35,7 +46,17 @@ export const MILESTONE_STATUS_TONES: Record<MilestoneStatus, BadgeTone> = {
   REVISION_REQUESTED: 'warning',
   APPROVED: 'success',
   DISPUTED: 'danger',
+  OVERDUE: 'danger',
   CANCELLED: 'danger',
+}
+
+export const ESCALATION_LABELS: Record<string, string> = {
+  NONE: 'Normal',
+  REMINDER_SENT: 'Reminder sent',
+  WARNING_SENT: 'Warning sent',
+  ACTION_ELIGIBLE: 'Action eligible',
+  AUTO_APPROVED: 'Auto-approved',
+  CANCELLED_RECLAIMED: 'Cancelled & reclaimed',
 }
 
 /** Keep in sync with backend milestone.transitions.js */
@@ -47,6 +68,11 @@ const TRANSITION_ACTORS: Partial<
   },
   IN_PROGRESS: {
     SUBMITTED: ['FREELANCER'],
+    DISPUTED: ['CLIENT', 'FREELANCER'],
+  },
+  OVERDUE: {
+    SUBMITTED: ['FREELANCER'],
+    IN_PROGRESS: ['CLIENT', 'FREELANCER'],
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   SUBMITTED: {
@@ -94,6 +120,11 @@ export function getMilestoneActionLabel(toStatus: MilestoneStatus): string {
   return MILESTONE_ACTION_LABELS[toStatus] ?? `Move to ${toStatus}`
 }
 
+export function getEscalationLabel(status: string | null | undefined): string {
+  if (!status) return ESCALATION_LABELS.NONE
+  return ESCALATION_LABELS[status] ?? status.replace(/_/g, ' ')
+}
+
 export function transitionRequiresNote(toStatus: MilestoneStatus): boolean {
   return toStatus === 'REVISION_REQUESTED' || toStatus === 'DISPUTED'
 }
@@ -120,4 +151,13 @@ export function filterActionsForActor(
   return allowedTransitions.filter((to) =>
     actorCanTransition(fromStatus, to, actorRole),
   )
+}
+
+export function parseAcceptanceCriteriaLines(text: string): string[] {
+  const lines = text
+    .split(/\r?\n|;/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (lines.length === 0 && text.trim()) return [text.trim()]
+  return lines
 }
