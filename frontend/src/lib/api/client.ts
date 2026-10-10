@@ -96,3 +96,100 @@ export async function apiRequest<T>(
 
   return (await response.json()) as T
 }
+
+type FormRequestOptions = {
+  method?: string
+  formData: FormData
+  token?: string | null
+}
+
+/** Multipart upload — do not set Content-Type (browser sets boundary). */
+export async function apiFormRequest<T>(
+  path: string,
+  options: FormRequestOptions,
+): Promise<T> {
+  const base = getApiBaseUrl()
+  if (!base) {
+    throw new ApiError(
+      'API is not configured (VITE_API_BASE_URL missing).',
+      'API_UNAVAILABLE',
+    )
+  }
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${base}${path}`, {
+      method: options.method ?? 'POST',
+      headers,
+      body: options.formData,
+    })
+  } catch {
+    throw new ApiError(
+      'Could not reach the API. Check that the backend is running.',
+      'NETWORK_ERROR',
+    )
+  }
+
+  if (!response.ok) {
+    throw await parseError(response)
+  }
+
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  return (await response.json()) as T
+}
+
+type BlobRequestOptions = {
+  method?: string
+  token?: string | null
+}
+
+/** Authenticated binary download (private evidence files). */
+export async function apiBlobRequest(
+  path: string,
+  options: BlobRequestOptions = {},
+): Promise<{ blob: Blob; headers: Headers }> {
+  const base = getApiBaseUrl()
+  if (!base) {
+    throw new ApiError(
+      'API is not configured (VITE_API_BASE_URL missing).',
+      'API_UNAVAILABLE',
+    )
+  }
+
+  const headers: Record<string, string> = {
+    Accept: '*/*',
+  }
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${base}${path}`, {
+      method: options.method ?? 'GET',
+      headers,
+    })
+  } catch {
+    throw new ApiError(
+      'Could not reach the API. Check that the backend is running.',
+      'NETWORK_ERROR',
+    )
+  }
+
+  if (!response.ok) {
+    throw await parseError(response)
+  }
+
+  const blob = await response.blob()
+  return { blob, headers: response.headers }
+}

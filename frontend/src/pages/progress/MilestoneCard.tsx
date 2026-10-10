@@ -1,10 +1,16 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Pencil, Trash2, Upload } from 'lucide-react'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { MilestoneStatusBadge } from '../../components/ui/MilestoneStatusBadge'
 import { Panel } from '../../components/ui/Panel'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
 import type { Milestone } from '../../lib/api/milestones'
+import type {
+  ReviewDecision,
+  Submission,
+  SubmissionInput,
+} from '../../lib/api/submissions'
 import {
   filterActionsForActor,
   getMilestoneActionLabel,
@@ -12,15 +18,33 @@ import {
   type MilestoneActorRole,
   type MilestoneStatus,
 } from '../../lib/milestoneStatus'
+import {
+  canReviewSubmission,
+  canSubmitDeliverable,
+} from '../../lib/submissionStatus'
+import { AiAssessmentPanel } from './AiAssessmentPanel'
+import { ReviewPanel } from './ReviewPanel'
+import { SubmissionForm } from './SubmissionForm'
+import { SubmissionHistory } from './SubmissionHistory'
 
 type MilestoneCardProps = {
   milestone: Milestone
+  submissions: Submission[]
   actorRole: MilestoneActorRole | null
   isClient: boolean
+  isFreelancer: boolean
+  projectClosed: boolean
   busy: boolean
   onTransition: (toStatus: MilestoneStatus) => void
   onEdit: () => void
   onDelete: () => void
+  onSubmitDeliverable: (input: SubmissionInput) => Promise<void>
+  onReview: (
+    submissionId: string,
+    decision: ReviewDecision,
+    feedback?: string,
+  ) => Promise<void>
+  onDownload: (submission: Submission) => void
 }
 
 function formatDateTime(iso: string | null) {
@@ -55,18 +79,57 @@ function formatDateOnly(value: string | null) {
 
 export function MilestoneCard({
   milestone,
+  submissions,
   actorRole,
   isClient,
+  isFreelancer,
+  projectClosed,
   busy,
   onTransition,
   onEdit,
   onDelete,
+  onSubmitDeliverable,
+  onReview,
+  onDownload,
 }: MilestoneCardProps) {
-  const actions = filterActionsForActor(
+  const [showSubmitForm, setShowSubmitForm] = useState(false)
+
+  const latest =
+    submissions.length > 0
+      ? [...submissions].sort((a, b) => b.revision - a.revision)[0]
+      : null
+
+  const canSubmit =
+    isFreelancer &&
+    !projectClosed &&
+    canSubmitDeliverable(milestone.status)
+
+  const showReview =
+    isClient &&
+    !projectClosed &&
+    latest &&
+    canReviewSubmission(milestone.status)
+
+  const rawActions = filterActionsForActor(
     milestone.status,
     milestone.allowedTransitions,
     actorRole,
   )
+
+  // Prefer submission/review APIs over raw status buttons for the same outcomes.
+  const actions = rawActions.filter((toStatus) => {
+    if (canSubmit && toStatus === 'SUBMITTED') return false
+    if (
+      showReview &&
+      (toStatus === 'IN_REVIEW' ||
+        toStatus === 'APPROVED' ||
+        toStatus === 'REVISION_REQUESTED')
+    ) {
+      return false
+    }
+    return true
+  })
+
   const canManagePending = isClient && milestone.status === 'PENDING'
   const dueLabel = formatDateOnly(milestone.dueDate)
   const overdue =
@@ -97,6 +160,9 @@ export function MilestoneCard({
             ) : null}
             {milestone.reviewWindowDays != null ? (
               <span>Review window {milestone.reviewWindowDays}d</span>
+            ) : null}
+            {submissions.length > 0 ? (
+              <span>{submissions.length} revision(s)</span>
             ) : null}
           </div>
         </div>
@@ -157,12 +223,57 @@ export function MilestoneCard({
             ) : null}
           </ul>
           {milestone.statusNote ? (
-            <Alert tone="warning">
-              Latest note: {milestone.statusNote}
-            </Alert>
+            <Alert tone="warning">Latest note: {milestone.statusNote}</Alert>
           ) : null}
         </div>
       )}
+
+      <div className="border-t-2 border-dark/10 pt-3 space-y-4">
+        <SubmissionHistory
+          submissions={submissions}
+          busy={busy}
+          onDownload={onDownload}
+        />
+        <AiAssessmentPanel />
+      </div>
+
+      {canSubmit ? (
+        <div className="border-t-2 border-dark/10 pt-3 space-y-3">
+          {!showSubmitForm ? (
+            <Button
+              size="sm"
+              leftIcon={<Upload className="w-3.5 h-3.5" />}
+              disabled={busy}
+              onClick={() => setShowSubmitForm(true)}
+            >
+              Submit deliverable
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <h4 className="font-display font-bold text-sm uppercase tracking-tight">
+                New submission
+              </h4>
+              <SubmissionForm
+                disabled={busy}
+                onCancel={() => setShowSubmitForm(false)}
+                onSubmit={async (input) => {
+                  await onSubmitDeliverable(input)
+                  setShowSubmitForm(false)
+                }}
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {showReview && latest ? (
+        <ReviewPanel
+          latest={latest}
+          milestoneStatus={milestone.status}
+          busy={busy}
+          onReview={onReview}
+        />
+      ) : null}
 
       {actions.length > 0 ? (
         <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">

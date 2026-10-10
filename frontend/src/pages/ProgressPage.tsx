@@ -23,6 +23,15 @@ import {
 } from '../lib/api/milestones'
 import { getProject, type Project } from '../lib/api/projects'
 import {
+  createSubmission,
+  downloadSubmissionFile,
+  listSubmissions,
+  reviewSubmission,
+  type ReviewDecision,
+  type Submission,
+  type SubmissionInput,
+} from '../lib/api/submissions'
+import {
   getMilestoneActionLabel,
   transitionRequiresNote,
   type MilestoneActorRole,
@@ -52,6 +61,9 @@ export function ProgressPage() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [milestones, setMilestones] = useState<Milestone[]>([])
+  const [submissionsByMilestone, setSubmissionsByMilestone] = useState<
+    Record<string, Submission[]>
+  >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -82,11 +94,25 @@ export function ProgressPage() {
         getProject(token, projectId),
         listMilestones(token, projectId),
       ])
+      const list = milestonesResult.milestones
       setProject(projectResult.project)
-      setMilestones(milestonesResult.milestones)
+      setMilestones(list)
+
+      const submissionResults = await Promise.all(
+        list.map(async (milestone) => {
+          try {
+            const result = await listSubmissions(token, milestone.id)
+            return [milestone.id, result.submissions] as const
+          } catch {
+            return [milestone.id, [] as Submission[]] as const
+          }
+        }),
+      )
+      setSubmissionsByMilestone(Object.fromEntries(submissionResults))
     } catch (err) {
       setProject(null)
       setMilestones([])
+      setSubmissionsByMilestone({})
       setError(
         err instanceof ApiError
           ? err.message
@@ -103,6 +129,7 @@ export function ProgressPage() {
 
   const actorRole = resolveActorRole(user?.id, user?.role, project)
   const isClient = actorRole === 'CLIENT'
+  const isFreelancer = actorRole === 'FREELANCER'
   const projectClosed =
     project?.status === 'CANCELLED' || project?.status === 'COMPLETED'
   const canCreate = isClient && !projectClosed
@@ -144,6 +171,82 @@ export function ProgressPage() {
     } catch (err) {
       setActionError(
         err instanceof ApiError ? err.message : 'Could not delete milestone.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onSubmitDeliverable(
+    milestone: Milestone,
+    input: SubmissionInput,
+  ) {
+    if (!token) return
+    setActionError(null)
+    setActionSuccess(null)
+    setBusyId(milestone.id)
+    try {
+      const result = await createSubmission(token, milestone.id, input)
+      setActionSuccess(
+        `Revision ${result.submission.revision} submitted` +
+          (result.submission.sha256Hash
+            ? ` · SHA-256 ${result.submission.sha256Hash.slice(0, 12)}…`
+            : ''),
+      )
+      await load()
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Could not submit deliverable.'
+      setActionError(message)
+      throw err instanceof Error ? err : new Error(message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onReview(
+    milestone: Milestone,
+    submissionId: string,
+    decision: ReviewDecision,
+    feedback?: string,
+  ) {
+    if (!token) return
+    setActionError(null)
+    setActionSuccess(null)
+    setBusyId(milestone.id)
+    try {
+      const result = await reviewSubmission(token, submissionId, {
+        decision,
+        feedback,
+      })
+      setActionSuccess(
+        `${milestone.title}: ${decision.replace(/_/g, ' ').toLowerCase()} · now ${result.milestone.status}.`,
+      )
+      await load()
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Could not record review.'
+      setActionError(message)
+      throw err instanceof Error ? err : new Error(message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onDownload(milestoneId: string, submission: Submission) {
+    if (!token) return
+    setActionError(null)
+    setBusyId(milestoneId)
+    try {
+      await downloadSubmissionFile(token, submission)
+      setActionSuccess(
+        `Downloaded ${submission.originalFilename ?? 'deliverable'}.`,
+      )
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not download private file.',
       )
     } finally {
       setBusyId(null)
@@ -225,15 +328,17 @@ export function ProgressPage() {
       />
 
       <Alert tone="info">
-        Status actions update the shared milestone workflow. File submissions and
-        evidence land in a later phase — “Mark submitted” records status only for
-        now. The server rejects unauthorized transitions even if a button is shown.
+        Freelancers submit files, links, and notes; the server stores private
+        files and hashes uploads. Clients review the latest revision (approve /
+        request revision). A SHA-256 hash checks integrity only — not quality or
+        authorship. The server rejects unauthorized actions even if a control is
+        shown.
       </Alert>
 
       {!isApiConfigured() ? (
         <Alert tone="warning">
           Set <code className="font-bold">VITE_API_BASE_URL</code> to load
-          milestones.
+          milestones and submissions.
         </Alert>
       ) : null}
 
@@ -314,7 +419,7 @@ export function ProgressPage() {
               title="No milestones yet"
               description={
                 canCreate
-                  ? 'Create the first milestone to track deliverables, review windows, and status.'
+                  ? 'Create the first milestone to track deliverables, submissions, and reviews.'
                   : 'The client adds milestones for this project.'
               }
             />
@@ -324,8 +429,11 @@ export function ProgressPage() {
                 <MilestoneCard
                   key={milestone.id}
                   milestone={milestone}
+                  submissions={submissionsByMilestone[milestone.id] ?? []}
                   actorRole={actorRole}
                   isClient={isClient}
+                  isFreelancer={isFreelancer}
+                  projectClosed={projectClosed}
                   busy={busyId === milestone.id}
                   onTransition={(toStatus) =>
                     requestTransition(milestone, toStatus)
@@ -335,6 +443,15 @@ export function ProgressPage() {
                     setShowCreate(false)
                   }}
                   onDelete={() => void onDelete(milestone)}
+                  onSubmitDeliverable={(input) =>
+                    onSubmitDeliverable(milestone, input)
+                  }
+                  onReview={(submissionId, decision, feedback) =>
+                    onReview(milestone, submissionId, decision, feedback)
+                  }
+                  onDownload={(submission) =>
+                    void onDownload(milestone.id, submission)
+                  }
                 />
               ))}
             </div>
