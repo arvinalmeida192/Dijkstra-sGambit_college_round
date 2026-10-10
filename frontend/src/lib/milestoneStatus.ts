@@ -6,6 +6,7 @@ export const MILESTONE_STATUSES = [
   'REVISION_REQUESTED',
   'APPROVED',
   'DISPUTED',
+  'CANCELLED',
 ] as const
 
 export type MilestoneStatus = (typeof MILESTONE_STATUSES)[number]
@@ -23,6 +24,7 @@ export const MILESTONE_STATUS_LABELS: Record<MilestoneStatus, string> = {
   REVISION_REQUESTED: 'Revision Requested',
   APPROVED: 'Approved',
   DISPUTED: 'Disputed',
+  CANCELLED: 'Cancelled',
 }
 
 export const MILESTONE_STATUS_TONES: Record<MilestoneStatus, BadgeTone> = {
@@ -33,6 +35,7 @@ export const MILESTONE_STATUS_TONES: Record<MilestoneStatus, BadgeTone> = {
   REVISION_REQUESTED: 'warning',
   APPROVED: 'success',
   DISPUTED: 'danger',
+  CANCELLED: 'danger',
 }
 
 /** Keep in sync with backend milestone.transitions.js */
@@ -61,6 +64,8 @@ const TRANSITION_ACTORS: Partial<
     DISPUTED: ['CLIENT', 'FREELANCER'],
   },
   DISPUTED: {
+    IN_PROGRESS: ['ARBITRATOR'],
+    CANCELLED: ['ARBITRATOR'],
     IN_REVIEW: ['ARBITRATOR'],
     APPROVED: ['ARBITRATOR'],
     REVISION_REQUESTED: ['ARBITRATOR'],

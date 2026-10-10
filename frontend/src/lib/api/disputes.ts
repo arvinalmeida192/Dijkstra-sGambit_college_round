@@ -8,6 +8,22 @@ export type DisputeDecision =
   | 'REFUND_TO_CLIENT'
   | 'SPLIT'
 
+export type DisputeResolutionOutcome =
+  | 'RESUME_EXISTING'
+  | 'RESUME_WITH_CHANGES'
+  | 'TERMINATE_WORK'
+
+export type DisputeResolutionType =
+  | 'MUTUAL_AGREEMENT'
+  | 'ARBITRATOR_DECISION'
+
+export type ResolutionProposal = {
+  proposedBy: string
+  outcome: DisputeResolutionOutcome
+  summary: string
+  proposedAt: string
+}
+
 export type DisputeEvidence = {
   id: string
   disputeId: string
@@ -37,6 +53,12 @@ export type Dispute = {
   decidedAt: string | null
   openPaymentId: string | null
   resolvePaymentId: string | null
+  resolutionType?: DisputeResolutionType | null
+  resolutionOutcome?: DisputeResolutionOutcome | null
+  resolutionSummary?: string | null
+  resolvedBy?: string | null
+  resolvedAt?: string | null
+  resolutionProposal?: ResolutionProposal | null
   createdAt: string
   updatedAt: string
   fundsMovedByDecision: boolean
@@ -53,6 +75,17 @@ export type DisputeDecisionInput = {
   decision: DisputeDecision
   rationale: string
   splitReleaseToFreelancer?: number
+  resolvePaymentId?: string | null
+}
+
+export type ProposeResolutionInput = {
+  outcome: DisputeResolutionOutcome
+  summary: string
+}
+
+export type ArbitratorResolveInput = {
+  outcome: DisputeResolutionOutcome
+  summary: string
   resolvePaymentId?: string | null
 }
 
@@ -119,6 +152,48 @@ export function decideDispute(
     milestone: Milestone
     notice: string
   }>(`/api/v1/disputes/${disputeId}/decide`, {
+    ...auth(token),
+    method: 'POST',
+    body: input,
+  })
+}
+
+export function proposeDisputeResolution(
+  token: string,
+  disputeId: string,
+  input: ProposeResolutionInput,
+) {
+  return apiRequest<{
+    dispute: Dispute
+    notice: string
+  }>(`/api/v1/disputes/${disputeId}/propose-resolution`, {
+    ...auth(token),
+    method: 'POST',
+    body: input,
+  })
+}
+
+export function acceptDisputeResolution(token: string, disputeId: string) {
+  return apiRequest<{
+    dispute: Dispute
+    milestone: Milestone
+    notice: string
+  }>(`/api/v1/disputes/${disputeId}/accept-resolution`, {
+    ...auth(token),
+    method: 'POST',
+  })
+}
+
+export function resolveDisputeAsArbitrator(
+  token: string,
+  disputeId: string,
+  input: ArbitratorResolveInput,
+) {
+  return apiRequest<{
+    dispute: Dispute
+    milestone: Milestone
+    notice: string
+  }>(`/api/v1/disputes/${disputeId}/resolve`, {
     ...auth(token),
     method: 'POST',
     body: input,

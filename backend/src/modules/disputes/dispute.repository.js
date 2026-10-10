@@ -82,6 +82,10 @@ export async function resolveDispute(
          decision = $3,
          decision_rationale = $4,
          split_release_to_freelancer = $5,
+         resolved_by = COALESCE($2, resolved_by),
+         resolution_type = 'ARBITRATOR_DECISION',
+         resolution_summary = $4,
+         resolved_at = NOW(),
          decided_at = NOW(),
          updated_at = NOW()
      WHERE id = $1 AND status IN ('OPEN', 'UNDER_REVIEW')
@@ -92,6 +96,54 @@ export async function resolveDispute(
       decision,
       rationale,
       splitReleaseToFreelancer ?? null,
+    ],
+  )
+  return rows[0] ?? null
+}
+
+export async function setResolutionProposal(id, proposal, client) {
+  const { rows } = await db(client).query(
+    `UPDATE disputes
+     SET resolution_proposal = $2,
+         updated_at = NOW()
+     WHERE id = $1 AND status IN ('OPEN', 'UNDER_REVIEW')
+     RETURNING *`,
+    [id, proposal ? JSON.stringify(proposal) : null],
+  )
+  return rows[0] ?? null
+}
+
+export async function resolveDisputeWithOutcome(
+  {
+    id,
+    resolvedBy,
+    resolutionType,
+    resolutionOutcome,
+    resolutionSummary,
+    arbitratorId = null,
+  },
+  client,
+) {
+  const { rows } = await db(client).query(
+    `UPDATE disputes
+     SET status = 'RESOLVED',
+         resolved_by = $2,
+         resolution_type = $3,
+         resolution_outcome = $4,
+         resolution_summary = $5,
+         resolved_at = NOW(),
+         resolution_proposal = NULL,
+         arbitrator_id = COALESCE($6, arbitrator_id),
+         updated_at = NOW()
+     WHERE id = $1 AND status IN ('OPEN', 'UNDER_REVIEW')
+     RETURNING *`,
+    [
+      id,
+      resolvedBy,
+      resolutionType,
+      resolutionOutcome,
+      resolutionSummary,
+      arbitratorId,
     ],
   )
   return rows[0] ?? null
@@ -200,6 +252,17 @@ export function toPublicDispute(row, evidence = undefined) {
     decidedAt: row.decided_at,
     openPaymentId: row.open_payment_id,
     resolvePaymentId: row.resolve_payment_id,
+    resolutionType: row.resolution_type ?? null,
+    resolutionOutcome: row.resolution_outcome ?? null,
+    resolutionSummary: row.resolution_summary ?? null,
+    resolvedBy: row.resolved_by ?? null,
+    resolvedAt: row.resolved_at ?? null,
+    resolutionProposal:
+      row.resolution_proposal != null
+        ? typeof row.resolution_proposal === 'string'
+          ? JSON.parse(row.resolution_proposal)
+          : row.resolution_proposal
+        : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     /**
