@@ -15,6 +15,7 @@ async function main() {
     console.log(`Agreements: /api/v1/projects/:id/agreements | /api/v1/agreements/:id`)
     console.log(`Milestones: /api/v1/projects/:id/milestones | /api/v1/milestones/:id`)
     console.log(`Submissions: /api/v1/milestones/:id/submissions | /api/v1/submissions/:id`)
+    console.log(`Payments: /api/v1/projects/:id/payments | /api/v1/milestones/:id/payments | /api/v1/payments/:id/sync`)
   })
 }
 
