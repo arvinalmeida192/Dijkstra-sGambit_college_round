@@ -2,10 +2,12 @@ import { Router } from 'express'
 import { authenticate } from '../../middleware/authenticate.js'
 import { requireRoles } from '../../middleware/authorize.js'
 import { projectAgreementsRouter } from '../agreements/agreement.routes.js'
+import { projectMilestonesRouter } from '../milestones/milestone.routes.js'
 import * as projectController from './project.controller.js'
 
 /**
  * Projects & invitations (Phase 08) + nested agreements (Phase 10)
+ * + nested milestones (Phase 12)
  *
  * GET    /api/v1/projects
  * POST   /api/v1/projects                      (CLIENT)
@@ -13,6 +15,8 @@ import * as projectController from './project.controller.js'
  * POST   /api/v1/projects/:id/invitations      (project client)
  * GET    /api/v1/projects/:id/agreements
  * POST   /api/v1/projects/:id/agreements       (CLIENT)
+ * GET    /api/v1/projects/:id/milestones
+ * POST   /api/v1/projects/:id/milestones       (CLIENT)
  * GET    /api/v1/invitations/:token            (public preview)
  * POST   /api/v1/invitations/:token/accept     (FREELANCER)
  */
@@ -35,6 +39,7 @@ projectsRouter.post(
   projectController.createInvitation,
 )
 projectsRouter.use('/:id/agreements', projectAgreementsRouter)
+projectsRouter.use('/:id/milestones', projectMilestonesRouter)
 
 invitationsRouter.get('/:token', projectController.previewInvitation)
 invitationsRouter.post(
