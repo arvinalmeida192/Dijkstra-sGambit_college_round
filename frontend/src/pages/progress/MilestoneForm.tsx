@@ -42,7 +42,13 @@ export function MilestoneForm({
   )
   const [dueDate, setDueDate] = useState(initial?.dueDate ?? '')
   const [reviewWindowDays, setReviewWindowDays] = useState(
-    initial?.reviewWindowDays != null ? String(initial.reviewWindowDays) : '',
+    initial?.reviewWindowDays != null ? String(initial.reviewWindowDays) : '7',
+  )
+  const [gracePeriodDays, setGracePeriodDays] = useState(
+    initial?.gracePeriodDays != null ? String(initial.gracePeriodDays) : '3',
+  )
+  const [maxRevisions, setMaxRevisions] = useState(
+    initial?.maxRevisions != null ? String(initial.maxRevisions) : '3',
   )
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
@@ -71,7 +77,31 @@ export function MilestoneForm({
         review = n
       }
     } else {
-      review = null
+      review = 7
+    }
+
+    let grace: number | null | undefined
+    if (gracePeriodDays.trim()) {
+      const n = Number(gracePeriodDays)
+      if (!Number.isInteger(n) || n < 0) {
+        errors.gracePeriodDays = 'Enter a non-negative integer.'
+      } else {
+        grace = n
+      }
+    } else {
+      grace = 3
+    }
+
+    let revisions: number | null | undefined
+    if (maxRevisions.trim()) {
+      const n = Number(maxRevisions)
+      if (!Number.isInteger(n) || n < 1) {
+        errors.maxRevisions = 'Enter a positive integer.'
+      } else {
+        revisions = n
+      }
+    } else {
+      revisions = 3
     }
 
     setFieldErrors(errors)
@@ -84,6 +114,8 @@ export function MilestoneForm({
       amount,
       dueDate: dueDate.trim() || null,
       reviewWindowDays: review ?? null,
+      gracePeriodDays: grace ?? null,
+      maxRevisions: revisions ?? null,
     }
   }
 
@@ -160,6 +192,29 @@ export function MilestoneForm({
           value={reviewWindowDays}
           onChange={(e) => setReviewWindowDays(e.target.value)}
           error={fieldErrors.reviewWindowDays}
+          hint="Default 7"
+          disabled={busy}
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          label="Grace period (days)"
+          name="gracePeriodDays"
+          inputMode="numeric"
+          value={gracePeriodDays}
+          onChange={(e) => setGracePeriodDays(e.target.value)}
+          error={fieldErrors.gracePeriodDays}
+          hint="Default 3"
+          disabled={busy}
+        />
+        <Input
+          label="Max revision rounds"
+          name="maxRevisions"
+          inputMode="numeric"
+          value={maxRevisions}
+          onChange={(e) => setMaxRevisions(e.target.value)}
+          error={fieldErrors.maxRevisions}
+          hint="Default 3"
           disabled={busy}
         />
       </div>

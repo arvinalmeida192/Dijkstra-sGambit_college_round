@@ -33,18 +33,28 @@ export const reviewSubmissionSchema = z
   .object({
     decision: z.enum(REVIEW_DECISIONS),
     feedback: z.string().trim().max(5000).optional().nullable(),
+    unmetCriteria: z
+      .array(z.string().trim().min(1, 'Criterion cannot be empty.').max(1000))
+      .optional()
+      .default([]),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (
-      value.decision === 'REVISION_REQUESTED' &&
-      (!value.feedback || value.feedback.length === 0)
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['feedback'],
-        message: 'feedback is required when requesting a revision.',
-      })
+    if (value.decision === 'REVISION_REQUESTED') {
+      if (!value.feedback || value.feedback.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['feedback'],
+          message: 'feedback is required when requesting a revision.',
+        })
+      }
+      if (!value.unmetCriteria || value.unmetCriteria.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['unmetCriteria'],
+          message: 'At least one unmet acceptance criterion must be specified when requesting a revision.',
+        })
+      }
     }
   })
 

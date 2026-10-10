@@ -33,6 +33,21 @@ export async function listPaymentsForMilestone(milestoneId) {
   return rows
 }
 
+/** Latest funded (CONFIRMED) payment with on-chain ids — used for protection txs. */
+export async function findFundedEscrowPaymentForMilestone(milestoneId) {
+  const { rows } = await query(
+    `SELECT * FROM payments
+     WHERE milestone_id = $1
+       AND status = 'CONFIRMED'
+       AND on_chain_agreement_id IS NOT NULL
+       AND on_chain_milestone_id IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [milestoneId],
+  )
+  return rows[0] ?? null
+}
+
 export async function insertPayment({
   projectId,
   milestoneId,

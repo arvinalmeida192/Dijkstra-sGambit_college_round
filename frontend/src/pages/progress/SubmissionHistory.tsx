@@ -140,6 +140,13 @@ export function SubmissionHistory({
                     {review.feedback ? (
                       <Alert tone="warning">Feedback: {review.feedback}</Alert>
                     ) : null}
+                    {(review.unmetCriteria?.length ?? 0) > 0 ? (
+                      <ul className="list-disc pl-5 font-mono text-[11px] text-dark/70">
+                        {review.unmetCriteria!.map((criterion) => (
+                          <li key={criterion}>{criterion}</li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
               </ul>

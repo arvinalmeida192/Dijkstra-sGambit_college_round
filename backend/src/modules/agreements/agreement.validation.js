@@ -46,7 +46,22 @@ const milestoneTermsSchema = z.object({
     .int()
     .positive('reviewWindowDays must be a positive integer.')
     .max(365)
-    .optional(),
+    .optional()
+    .default(7),
+  gracePeriodDays: z
+    .number()
+    .int()
+    .nonnegative('gracePeriodDays must be non-negative.')
+    .max(365)
+    .optional()
+    .default(3),
+  maxRevisions: z
+    .number()
+    .int()
+    .positive('maxRevisions must be at least 1.')
+    .max(20)
+    .optional()
+    .default(3),
 })
 
 export const agreementTermsSchema = z

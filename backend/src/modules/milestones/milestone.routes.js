@@ -55,3 +55,24 @@ milestonesRouter.delete(
   milestoneController.removeById,
 )
 milestonesRouter.patch('/:id/status', milestoneController.updateStatus)
+
+milestonesRouter.get('/:id/extensions', milestoneController.listExtensions)
+milestonesRouter.post('/:id/extensions', milestoneController.proposeExtension)
+milestonesRouter.post(
+  '/:id/extensions/:extId/respond',
+  milestoneController.respondExtension,
+)
+milestonesRouter.post(
+  '/:id/cancel-and-reclaim',
+  requireRoles('CLIENT'),
+  milestoneController.cancelAndReclaim,
+)
+milestonesRouter.post(
+  '/:id/execute-auto-release',
+  milestoneController.executeAutoRelease,
+)
+milestonesRouter.post(
+  '/:id/execute-reclaim',
+  requireRoles('CLIENT'),
+  milestoneController.executeReclaim,
+)

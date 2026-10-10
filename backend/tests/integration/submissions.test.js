@@ -124,7 +124,11 @@ describe('Submissions API', () => {
     const revRes = await request(app)
       .post(`/api/v1/submissions/${linkRes.body.submission.id}/review`)
       .set('Authorization', `Bearer ${client.token}`)
-      .send({ decision: 'REVISION_REQUESTED', feedback: 'Add the PDF' })
+      .send({
+        decision: 'REVISION_REQUESTED',
+        feedback: 'Add the PDF',
+        unmetCriteria: ['Approved mockups'],
+      })
     expect(revRes.status).toBe(200)
     expect(revRes.body.milestone.status).toBe('REVISION_REQUESTED')
 
@@ -264,7 +268,11 @@ describe('Submissions API', () => {
     const revision = await request(app)
       .post(`/api/v1/submissions/${v1.body.submission.id}/review`)
       .set('Authorization', `Bearer ${client.token}`)
-      .send({ decision: 'REVISION_REQUESTED', feedback: 'More detail' })
+      .send({
+        decision: 'REVISION_REQUESTED',
+        feedback: 'More detail',
+        unmetCriteria: ['Approved mockups'],
+      })
     expect(revision.status).toBe(200)
     expect(revision.body.milestone.status).toBe('REVISION_REQUESTED')
 

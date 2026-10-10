@@ -28,6 +28,11 @@ export const env = {
   chainId: process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : 0,
   rpcUrl: process.env.RPC_URL ?? '',
   escrowContractAddress: process.env.ESCROW_CONTRACT_ADDRESS ?? '',
+  /**
+   * Optional local/test operator key for scheduled auto-release / reclaim.
+   * Never use a mainnet key. Leave unset to keep money moves UI-reported only.
+   */
+  escrowOperatorPrivateKey: process.env.ESCROW_OPERATOR_PRIVATE_KEY ?? '',
   /** ERC-20 decimals for amount mapping (app cents → token base). */
   tokenDecimals: Number(process.env.TOKEN_DECIMALS ?? 6),
 

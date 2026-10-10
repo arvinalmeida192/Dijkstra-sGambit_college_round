@@ -13,12 +13,19 @@ import { SectionHeader } from '../components/ui/SectionHeader'
 import { Textarea } from '../components/ui/Textarea'
 import { ApiError, isApiConfigured } from '../lib/api/client'
 import {
+  cancelAndReclaimMilestone,
   createMilestone,
   deleteMilestone,
+  executeAutoRelease,
+  executeReclaim,
+  listExtensions,
   listMilestones,
+  proposeExtension,
+  respondExtension,
   updateMilestone,
   updateMilestoneStatus,
   type Milestone,
+  type MilestoneExtension,
   type MilestoneInput,
 } from '../lib/api/milestones'
 import { listAgreements } from '../lib/api/agreements'
@@ -65,6 +72,9 @@ export function ProgressPage() {
   const [milestones, setMilestones] = useState<Milestone[]>([])
   const [submissionsByMilestone, setSubmissionsByMilestone] = useState<
     Record<string, Submission[]>
+  >({})
+  const [extensionsByMilestone, setExtensionsByMilestone] = useState<
+    Record<string, MilestoneExtension[]>
   >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -122,10 +132,23 @@ export function ProgressPage() {
         }),
       )
       setSubmissionsByMilestone(Object.fromEntries(submissionResults))
+
+      const extensionResults = await Promise.all(
+        list.map(async (milestone) => {
+          try {
+            const result = await listExtensions(token, milestone.id)
+            return [milestone.id, result.extensions] as const
+          } catch {
+            return [milestone.id, [] as MilestoneExtension[]] as const
+          }
+        }),
+      )
+      setExtensionsByMilestone(Object.fromEntries(extensionResults))
     } catch (err) {
       setProject(null)
       setMilestones([])
       setSubmissionsByMilestone({})
+      setExtensionsByMilestone({})
       setError(
         err instanceof ApiError
           ? err.message
@@ -222,6 +245,7 @@ export function ProgressPage() {
     submissionId: string,
     decision: ReviewDecision,
     feedback?: string,
+    unmetCriteria?: string[],
   ) {
     if (!token) return
     setActionError(null)
@@ -231,6 +255,7 @@ export function ProgressPage() {
       const result = await reviewSubmission(token, submissionId, {
         decision,
         feedback,
+        unmetCriteria,
       })
       setActionSuccess(
         `${milestone.title}: ${decision.replace(/_/g, ' ').toLowerCase()} · now ${result.milestone.status}.`,
@@ -241,6 +266,111 @@ export function ProgressPage() {
         err instanceof ApiError ? err.message : 'Could not record review.'
       setActionError(message)
       throw err instanceof Error ? err : new Error(message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onProposeExtension(
+    milestone: Milestone,
+    input: { newDueDate: string; reason: string },
+  ) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    try {
+      await proposeExtension(token, milestone.id, input)
+      setActionSuccess('Extension proposal submitted. Takes effect only when accepted.')
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not propose extension.',
+      )
+      throw err
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onRespondExtension(
+    milestone: Milestone,
+    extensionId: string,
+    decision: 'ACCEPT' | 'REJECT',
+  ) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    try {
+      await respondExtension(token, milestone.id, extensionId, { decision })
+      setActionSuccess(
+        decision === 'ACCEPT'
+          ? 'Extension accepted. Due date updated.'
+          : 'Extension rejected.',
+      )
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not respond to extension.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onCancelAndReclaim(milestone: Milestone) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    try {
+      const result = await cancelAndReclaimMilestone(token, milestone.id, {})
+      setActionSuccess(result.notice)
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not cancel milestone.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onExecuteAutoRelease(milestone: Milestone) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    try {
+      const result = await executeAutoRelease(token, milestone.id)
+      setActionSuccess(
+        result.submitted
+          ? `Auto-release submitted: ${result.txHash}`
+          : result.notice || result.reason || 'Auto-release not submitted.',
+      )
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not execute auto-release.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function onExecuteReclaim(milestone: Milestone) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    try {
+      const result = await executeReclaim(token, milestone.id)
+      setActionSuccess(
+        result.submitted
+          ? `Reclaim submitted: ${result.txHash}`
+          : result.notice || result.reason || 'Reclaim not submitted.',
+      )
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not execute reclaim.',
+      )
     } finally {
       setBusyId(null)
     }
@@ -468,9 +598,11 @@ export function ProgressPage() {
                   key={milestone.id}
                   milestone={milestone}
                   submissions={submissionsByMilestone[milestone.id] ?? []}
+                  extensions={extensionsByMilestone[milestone.id] ?? []}
                   actorRole={actorRole}
                   isClient={isClient}
                   isFreelancer={isFreelancer}
+                  currentUserId={user?.id}
                   projectClosed={projectClosed}
                   busy={busyId === milestone.id}
                   token={token}
@@ -485,12 +617,27 @@ export function ProgressPage() {
                   onSubmitDeliverable={(input) =>
                     onSubmitDeliverable(milestone, input)
                   }
-                  onReview={(submissionId, decision, feedback) =>
-                    onReview(milestone, submissionId, decision, feedback)
+                  onReview={(submissionId, decision, feedback, unmetCriteria) =>
+                    onReview(
+                      milestone,
+                      submissionId,
+                      decision,
+                      feedback,
+                      unmetCriteria,
+                    )
                   }
                   onDownload={(submission) =>
                     void onDownload(milestone.id, submission)
                   }
+                  onProposeExtension={(input) =>
+                    onProposeExtension(milestone, input)
+                  }
+                  onRespondExtension={(extensionId, decision) =>
+                    onRespondExtension(milestone, extensionId, decision)
+                  }
+                  onCancelAndReclaim={() => onCancelAndReclaim(milestone)}
+                  onExecuteAutoRelease={() => onExecuteAutoRelease(milestone)}
+                  onExecuteReclaim={() => onExecuteReclaim(milestone)}
                 />
               ))}
             </div>

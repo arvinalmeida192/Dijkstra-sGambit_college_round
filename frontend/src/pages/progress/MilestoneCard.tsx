@@ -2,12 +2,20 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Pencil, Trash2, Upload } from 'lucide-react'
 import { Alert } from '../../components/ui/Alert'
+import { Badge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { MilestoneStatusBadge } from '../../components/ui/MilestoneStatusBadge'
+import { Modal } from '../../components/ui/Modal'
 import { Panel } from '../../components/ui/Panel'
+import { Textarea } from '../../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
+<<<<<<< HEAD
+import type { Milestone, MilestoneExtension } from '../../lib/api/milestones'
+=======
 import { routes } from '../../lib/routes'
 import type { Milestone } from '../../lib/api/milestones'
+>>>>>>> origin/main
 import type {
   ReviewDecision,
   Submission,
@@ -15,6 +23,7 @@ import type {
 } from '../../lib/api/submissions'
 import {
   filterActionsForActor,
+  getEscalationLabel,
   getMilestoneActionLabel,
   transitionRequiresNote,
   type MilestoneActorRole,
@@ -32,9 +41,11 @@ import { SubmissionHistory } from './SubmissionHistory'
 type MilestoneCardProps = {
   milestone: Milestone
   submissions: Submission[]
+  extensions: MilestoneExtension[]
   actorRole: MilestoneActorRole | null
   isClient: boolean
   isFreelancer: boolean
+  currentUserId: string | undefined
   projectClosed: boolean
   busy: boolean
   token: string | null
@@ -46,11 +57,23 @@ type MilestoneCardProps = {
     submissionId: string,
     decision: ReviewDecision,
     feedback?: string,
+    unmetCriteria?: string[],
   ) => Promise<void>
   onDownload: (submission: Submission) => void
+  onProposeExtension: (input: {
+    newDueDate: string
+    reason: string
+  }) => Promise<void>
+  onRespondExtension: (
+    extensionId: string,
+    decision: 'ACCEPT' | 'REJECT',
+  ) => Promise<void>
+  onCancelAndReclaim: (reason?: string) => Promise<void>
+  onExecuteAutoRelease: () => Promise<void>
+  onExecuteReclaim: () => Promise<void>
 }
 
-function formatDateTime(iso: string | null) {
+function formatDateTime(iso: string | null | undefined) {
   if (!iso) return null
   try {
     return new Date(iso).toLocaleString(undefined, {
@@ -80,12 +103,26 @@ function formatDateOnly(value: string | null) {
   }
 }
 
+function countdownLabel(iso: string | null | undefined) {
+  if (!iso) return null
+  const due = new Date(iso).getTime()
+  if (Number.isNaN(due)) return null
+  const ms = due - Date.now()
+  if (ms <= 0) return 'Expired — auto-approval eligible'
+  const hours = Math.ceil(ms / (1000 * 60 * 60))
+  if (hours < 48) return `${hours}h remaining`
+  const days = Math.ceil(hours / 24)
+  return `${days}d remaining`
+}
+
 export function MilestoneCard({
   milestone,
   submissions,
+  extensions,
   actorRole,
   isClient,
   isFreelancer,
+  currentUserId,
   projectClosed,
   busy,
   token,
@@ -95,13 +132,30 @@ export function MilestoneCard({
   onSubmitDeliverable,
   onReview,
   onDownload,
+  onProposeExtension,
+  onRespondExtension,
+  onCancelAndReclaim,
+  onExecuteAutoRelease,
+  onExecuteReclaim,
 }: MilestoneCardProps) {
   const [showSubmitForm, setShowSubmitForm] = useState(false)
+  const [showExtension, setShowExtension] = useState(false)
+  const [extDate, setExtDate] = useState('')
+  const [extReason, setExtReason] = useState('')
+  const [extError, setExtError] = useState<string | null>(null)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   const latest =
     submissions.length > 0
       ? [...submissions].sort((a, b) => b.revision - a.revision)[0]
       : null
+
+  const revisionRoundsUsed = submissions.reduce((count, sub) => {
+    const reviews = sub.reviews ?? []
+    return (
+      count + reviews.filter((r) => r.decision === 'REVISION_REQUESTED').length
+    )
+  }, 0)
 
   const canSubmit =
     isFreelancer &&
@@ -120,7 +174,6 @@ export function MilestoneCard({
     actorRole,
   )
 
-  // Prefer submission/review APIs over raw status buttons for the same outcomes.
   const actions = rawActions.filter((toStatus) => {
     if (canSubmit && toStatus === 'SUBMITTED') return false
     if (
@@ -137,10 +190,30 @@ export function MilestoneCard({
   const canManagePending =
     isClient && milestone.status === 'PENDING' && !milestone.agreementId
   const dueLabel = formatDateOnly(milestone.dueDate)
-  const overdue =
-    Boolean(milestone.dueDate) &&
-    milestone.status !== 'APPROVED' &&
-    milestone.dueDate! < new Date().toISOString().slice(0, 10)
+  const pendingExtension = extensions.find((e) => e.status === 'PROPOSED')
+  const canProposeExtension =
+    (isClient || isFreelancer) &&
+    !projectClosed &&
+    !['APPROVED', 'CANCELLED'].includes(milestone.status) &&
+    !pendingExtension
+
+  const canCancelReclaim =
+    isClient &&
+    !projectClosed &&
+    (milestone.status === 'OVERDUE' ||
+      milestone.escalationStatus === 'ACTION_ELIGIBLE') &&
+    milestone.status !== 'DISPUTED' &&
+    submissions.length === 0
+
+  const reviewCountdown = countdownLabel(milestone.reviewDueAt)
+  const protectionNotice =
+    milestone.status === 'OVERDUE'
+      ? 'Deadline and grace period expired with no submission. Client may cancel and reclaim unreleased funds unless a dispute is open.'
+      : milestone.escalationStatus === 'AUTO_APPROVED'
+        ? 'Review window expired without client action. Milestone was auto-approved; funds may be released on-chain.'
+        : milestone.status === 'DISPUTED'
+          ? 'An open dispute freezes release, auto-release, and cancellation until resolved.'
+          : null
 
   return (
     <Panel tone="surface" shadow="sm" className="space-y-4">
@@ -151,6 +224,12 @@ export function MilestoneCard({
               {milestone.title}
             </h3>
             <MilestoneStatusBadge status={milestone.status} />
+            {milestone.escalationStatus &&
+            milestone.escalationStatus !== 'NONE' ? (
+              <Badge tone="warning" dot>
+                {getEscalationLabel(milestone.escalationStatus)}
+              </Badge>
+            ) : null}
           </div>
           <div className="flex flex-wrap gap-3 font-mono text-[11px] text-dark/60">
             <span className="font-bold text-dark">
@@ -158,14 +237,20 @@ export function MilestoneCard({
               <span className="font-normal text-dark/50">(÷100 units)</span>
             </span>
             {dueLabel ? (
-              <span className={overdue ? 'text-status-danger font-bold' : ''}>
+              <span
+                className={
+                  milestone.status === 'OVERDUE'
+                    ? 'text-status-danger font-bold'
+                    : ''
+                }
+              >
                 Due {dueLabel}
-                {overdue ? ' · overdue' : ''}
+                {milestone.status === 'OVERDUE' ? ' · overdue' : ''}
               </span>
             ) : null}
-            {milestone.reviewWindowDays != null ? (
-              <span>Review window {milestone.reviewWindowDays}d</span>
-            ) : null}
+            <span>Review {milestone.reviewWindowDays ?? 7}d</span>
+            <span>Grace {milestone.gracePeriodDays ?? 3}d</span>
+            <span>Max revisions {milestone.maxRevisions ?? 3}</span>
             {submissions.length > 0 ? (
               <span>{submissions.length} revision(s)</span>
             ) : null}
@@ -199,6 +284,30 @@ export function MilestoneCard({
           </span>
         ) : null}
       </div>
+
+      <div className="border-2 border-dark/10 bg-white/60 px-3 py-2 space-y-1">
+        <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
+          Next action / Owner / Due
+        </p>
+        <p className="font-body text-sm text-dark">
+          {milestone.nextAction ?? '—'} ·{' '}
+          <span className="font-mono text-xs">
+            {milestone.actionOwner ?? '—'}
+          </span>
+          {milestone.actionDueAt
+            ? ` · ${formatDateTime(milestone.actionDueAt)}`
+            : ''}
+        </p>
+        {reviewCountdown &&
+        (milestone.status === 'SUBMITTED' ||
+          milestone.status === 'IN_REVIEW') ? (
+          <p className="font-mono text-[11px] text-dark/70">
+            Review countdown: {reviewCountdown}
+          </p>
+        ) : null}
+      </div>
+
+      {protectionNotice ? <Alert tone="warning">{protectionNotice}</Alert> : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {milestone.description &&
@@ -301,11 +410,29 @@ export function MilestoneCard({
         <ReviewPanel
           latest={latest}
           milestoneStatus={milestone.status}
+          acceptanceCriteria={milestone.acceptanceCriteria}
+          maxRevisions={milestone.maxRevisions ?? 3}
+          revisionRoundsUsed={revisionRoundsUsed}
           busy={busy}
           onReview={onReview}
         />
       ) : null}
 
+<<<<<<< HEAD
+      {pendingExtension ? (
+        <div className="border-t-2 border-dark/10 pt-3 space-y-2">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
+            Pending extension
+          </p>
+          <p className="font-body text-sm">
+            Propose new due date {formatDateOnly(pendingExtension.newDueDate)}:{' '}
+            {pendingExtension.reason}
+          </p>
+          {currentUserId &&
+          pendingExtension.proposedBy !== currentUserId &&
+          (isClient || isFreelancer) ? (
+            <div className="flex flex-wrap gap-2">
+=======
       {milestone.status === 'DISPUTED' ? (
         <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
           <Link to={routes.disputes(milestone.projectId)}>
@@ -325,28 +452,200 @@ export function MilestoneCard({
                   ? 'danger'
                   : 'secondary'
             return (
+>>>>>>> origin/main
               <Button
-                key={toStatus}
                 size="sm"
-                variant={variant}
                 disabled={busy}
-                onClick={() => onTransition(toStatus)}
+                onClick={() =>
+                  void onRespondExtension(pendingExtension.id, 'ACCEPT')
+                }
               >
-                {getMilestoneActionLabel(toStatus)}
-                {needsNote ? '…' : ''}
+                Accept extension
               </Button>
-            )
-          })}
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={() =>
+                  void onRespondExtension(pendingExtension.id, 'REJECT')
+                }
+              >
+                Reject
+              </Button>
+            </div>
+          ) : (
+            <p className="font-mono text-[11px] text-dark/50">
+              Waiting for the other party to accept or reject.
+            </p>
+          )}
         </div>
-      ) : milestone.status === 'APPROVED' ? (
+      ) : null}
+
+      <div className="flex flex-wrap gap-2 pt-1 border-t-2 border-dark/10">
+        {actions.map((toStatus) => {
+          const needsNote = transitionRequiresNote(toStatus)
+          const variant =
+            toStatus === 'APPROVED'
+              ? 'primary'
+              : toStatus === 'DISPUTED'
+                ? 'danger'
+                : 'secondary'
+          return (
+            <Button
+              key={toStatus}
+              size="sm"
+              variant={variant}
+              disabled={busy}
+              onClick={() => onTransition(toStatus)}
+            >
+              {getMilestoneActionLabel(toStatus)}
+              {needsNote ? '…' : ''}
+            </Button>
+          )
+        })}
+        {canProposeExtension ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => setShowExtension(true)}
+          >
+            Propose extension…
+          </Button>
+        ) : null}
+        {canCancelReclaim ? (
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={busy}
+            onClick={() => setShowCancelConfirm(true)}
+          >
+            Cancel & reclaim…
+          </Button>
+        ) : null}
+        {milestone.escalationStatus === 'AUTO_APPROVED' &&
+        milestone.status === 'APPROVED' ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => void onExecuteAutoRelease()}
+          >
+            Execute auto-release (local)
+          </Button>
+        ) : null}
+        {isClient && milestone.status === 'CANCELLED' ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => void onExecuteReclaim()}
+          >
+            Execute reclaim (local)
+          </Button>
+        ) : null}
+      </div>
+
+      {milestone.status === 'APPROVED' &&
+      milestone.escalationStatus !== 'AUTO_APPROVED' ? (
         <p className="font-mono text-[11px] text-dark/50">
-          Milestone approved. Payment release connects in a later phase.
+          Milestone approved. Release payment via the payments / escrow flow
+          (local/test chain only).
         </p>
       ) : milestone.status === 'CANCELLED' ? (
         <p className="font-mono text-[11px] text-dark/50">
           Milestone cancelled. Work ended via dispute resolution.
         </p>
       ) : null}
+
+      <Modal
+        open={showExtension}
+        onClose={() => setShowExtension(false)}
+        title="Propose deadline extension"
+      >
+        <div className="space-y-3">
+          <Input
+            label="New due date"
+            type="date"
+            value={extDate}
+            onChange={(e) => setExtDate(e.target.value)}
+          />
+          <Textarea
+            label="Reason"
+            value={extReason}
+            onChange={(e) => setExtReason(e.target.value)}
+            rows={3}
+          />
+          {extError ? <Alert tone="danger">{extError}</Alert> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={async () => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(extDate)) {
+                  setExtError('Use YYYY-MM-DD.')
+                  return
+                }
+                if (!extReason.trim()) {
+                  setExtError('Reason is required.')
+                  return
+                }
+                setExtError(null)
+                await onProposeExtension({
+                  newDueDate: extDate,
+                  reason: extReason.trim(),
+                })
+                setShowExtension(false)
+                setExtDate('')
+                setExtReason('')
+              }}
+            >
+              Submit proposal
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowExtension(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showCancelConfirm}
+        onClose={() => setShowCancelConfirm(false)}
+        title="Cancel milestone and reclaim funds?"
+      >
+        <div className="space-y-3">
+          <Alert tone="warning">
+            This cancels only this undelivered milestone after deadline + grace.
+            Blocked if a dispute is open. On-chain reclaim still requires a local
+            chain transaction.
+          </Alert>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={busy}
+              onClick={async () => {
+                await onCancelAndReclaim()
+                setShowCancelConfirm(false)
+              }}
+            >
+              Confirm cancel & reclaim
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowCancelConfirm(false)}
+            >
+              Keep milestone
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Panel>
   )
 }

@@ -9,7 +9,9 @@ const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/
 const EVENT_STATUS = {
   MilestoneFunded: 'CONFIRMED',
   MilestoneReleased: 'RELEASED',
+  MilestoneAutoReleased: 'RELEASED',
   MilestoneRefunded: 'REFUNDED',
+  MilestoneReclaimed: 'REFUNDED',
   DisputeOpened: 'DISPUTED',
 }
 
@@ -183,8 +185,11 @@ export function createEscrowVerifier({
       'DisputeResolved',
       'DisputeOpened',
       'MilestoneReleased',
+      'MilestoneAutoReleased',
       'MilestoneRefunded',
+      'MilestoneReclaimed',
       'MilestoneFunded',
+      'MilestoneProtectionConfigured',
       'MilestoneAdded',
       'AgreementCreated',
     ]
@@ -206,7 +211,9 @@ export function createEscrowVerifier({
     if (
       primary.name === 'MilestoneFunded' ||
       primary.name === 'MilestoneReleased' ||
-      primary.name === 'MilestoneRefunded'
+      primary.name === 'MilestoneAutoReleased' ||
+      primary.name === 'MilestoneRefunded' ||
+      primary.name === 'MilestoneReclaimed'
     ) {
       onChainAgreementId = primary.args.agreementId.toString()
       onChainMilestoneId = primary.args.milestoneId.toString()

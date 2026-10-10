@@ -42,15 +42,23 @@ contract MilestoneEscrow is ReentrancyGuard {
     struct Milestone {
         uint256 amount; // token base units
         MilestoneState state;
+        uint256 deadlineWithGrace; // unix timestamp seconds (0 = unset)
+        uint256 reviewDueAt; // unix timestamp seconds (0 = unset)
     }
 
     uint256 public nextAgreementId;
+
+    /// @notice Optional local/test operator that may configure timers and reclaim.
+    ///         Auto-release stays permissionless once reviewDueAt is set.
+    address public protectionOperator;
 
     mapping(uint256 => Agreement) public agreements;
     /// @dev agreementId => milestoneId => Milestone
     mapping(uint256 => mapping(uint256 => Milestone)) public milestones;
     /// @dev agreementId => next milestone id to assign
     mapping(uint256 => uint256) public nextMilestoneId;
+
+    event ProtectionOperatorUpdated(address indexed previousOperator, address indexed newOperator);
 
     event AgreementCreated(
         uint256 indexed agreementId,
@@ -101,6 +109,27 @@ contract MilestoneEscrow is ReentrancyGuard {
         uint256 refundToClient
     );
 
+    event MilestoneAutoReleased(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneId,
+        address indexed to,
+        uint256 amount
+    );
+
+    event MilestoneReclaimed(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneId,
+        address indexed to,
+        uint256 amount
+    );
+
+    event MilestoneProtectionConfigured(
+        uint256 indexed agreementId,
+        uint256 indexed milestoneId,
+        uint256 deadlineWithGrace,
+        uint256 reviewDueAt
+    );
+
     error InvalidAddress();
     error InvalidAmount();
     error AgreementMissing();
@@ -108,10 +137,32 @@ contract MilestoneEscrow is ReentrancyGuard {
     error Unauthorized();
     error InvalidState();
     error RolesMustDiffer();
+    error DeadlineNotPassed();
+    error ReviewWindowNotExpired();
 
     modifier agreementExists(uint256 agreementId) {
         if (!agreements[agreementId].exists) revert AgreementMissing();
         _;
+    }
+
+    /**
+     * @notice Set or rotate the protection operator used by scheduled local/test jobs.
+     *         First caller may set when unset; afterwards only the current operator may change it.
+     */
+    function setProtectionOperator(address newOperator) external {
+        if (protectionOperator != address(0) && msg.sender != protectionOperator) {
+            revert Unauthorized();
+        }
+        address previous = protectionOperator;
+        protectionOperator = newOperator;
+        emit ProtectionOperatorUpdated(previous, newOperator);
+    }
+
+    function _isProtectionAdmin(Agreement storage a) internal view returns (bool) {
+        return
+            msg.sender == a.client ||
+            msg.sender == a.arbitrator ||
+            (protectionOperator != address(0) && msg.sender == protectionOperator);
     }
 
     /**
@@ -172,7 +223,9 @@ contract MilestoneEscrow is ReentrancyGuard {
         milestoneId = nextMilestoneId[agreementId]++;
         milestones[agreementId][milestoneId] = Milestone({
             amount: amount,
-            state: MilestoneState.Pending
+            state: MilestoneState.Pending,
+            deadlineWithGrace: 0,
+            reviewDueAt: 0
         });
 
         emit MilestoneAdded(agreementId, milestoneId, amount);
@@ -321,5 +374,105 @@ contract MilestoneEscrow is ReentrancyGuard {
     ) external view returns (uint256 amount, MilestoneState state) {
         Milestone storage m = milestones[agreementId][milestoneId];
         return (m.amount, m.state);
+    }
+
+    /**
+     * @notice Configure deadline and review window on a milestone.
+     *         Client or arbitrator may set. Reverts if milestone is resolved or missing.
+     */
+    function setMilestoneProtection(
+        uint256 agreementId,
+        uint256 milestoneId,
+        uint256 deadlineWithGrace,
+        uint256 reviewDueAt
+    ) external agreementExists(agreementId) {
+        Agreement storage a = agreements[agreementId];
+        if (!_isProtectionAdmin(a)) revert Unauthorized();
+
+        Milestone storage m = milestones[agreementId][milestoneId];
+        if (m.state == MilestoneState.None) revert MilestoneMissing();
+        if (m.state == MilestoneState.Released || m.state == MilestoneState.Refunded) {
+            revert InvalidState();
+        }
+
+        m.deadlineWithGrace = deadlineWithGrace;
+        m.reviewDueAt = reviewDueAt;
+
+        emit MilestoneProtectionConfigured(
+            agreementId,
+            milestoneId,
+            deadlineWithGrace,
+            reviewDueAt
+        );
+    }
+
+    /**
+     * @notice Auto-release a Funded milestone to the freelancer when review window expires.
+     *         Callable when reviewDueAt has passed and milestone is Funded.
+     *         REVERTS if milestone is Disputed or not Funded.
+     */
+    function autoReleaseMilestone(
+        uint256 agreementId,
+        uint256 milestoneId
+    ) external nonReentrant agreementExists(agreementId) {
+        Agreement storage a = agreements[agreementId];
+        Milestone storage m = milestones[agreementId][milestoneId];
+
+        if (m.state != MilestoneState.Funded) revert InvalidState();
+        if (m.reviewDueAt == 0 || block.timestamp < m.reviewDueAt) {
+            revert ReviewWindowNotExpired();
+        }
+
+        uint256 amount = m.amount;
+        m.state = MilestoneState.Released;
+
+        a.token.safeTransfer(a.freelancer, amount);
+
+        emit MilestoneReleased(
+            agreementId,
+            milestoneId,
+            a.freelancer,
+            amount
+        );
+        emit MilestoneAutoReleased(
+            agreementId,
+            milestoneId,
+            a.freelancer,
+            amount
+        );
+    }
+
+    /**
+     * @notice Client or arbitrator reclaims funds for an undelivered milestone after deadline + grace.
+     *         REVERTS if milestone is Disputed or not Funded.
+     */
+    function reclaimUndeliveredMilestone(
+        uint256 agreementId,
+        uint256 milestoneId
+    ) external nonReentrant agreementExists(agreementId) {
+        Agreement storage a = agreements[agreementId];
+        if (!_isProtectionAdmin(a)) revert Unauthorized();
+
+        Milestone storage m = milestones[agreementId][milestoneId];
+        if (m.state != MilestoneState.Funded) revert InvalidState();
+        if (m.deadlineWithGrace == 0 || block.timestamp < m.deadlineWithGrace) {
+            revert DeadlineNotPassed();
+        }
+
+        uint256 amount = m.amount;
+        m.state = MilestoneState.Refunded;
+
+        a.token.safeTransfer(a.client, amount);
+
+        emit MilestoneRefunded(agreementId, milestoneId, a.client, amount);
+        emit MilestoneReclaimed(agreementId, milestoneId, a.client, amount);
+    }
+
+    function getMilestoneProtection(
+        uint256 agreementId,
+        uint256 milestoneId
+    ) external view returns (uint256 deadlineWithGrace, uint256 reviewDueAt) {
+        Milestone storage m = milestones[agreementId][milestoneId];
+        return (m.deadlineWithGrace, m.reviewDueAt);
     }
 }

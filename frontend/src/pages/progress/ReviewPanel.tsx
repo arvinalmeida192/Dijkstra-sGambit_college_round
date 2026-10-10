@@ -1,42 +1,65 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { Textarea } from '../../components/ui/Textarea'
 import type { ReviewDecision, Submission } from '../../lib/api/submissions'
-import type { MilestoneStatus } from '../../lib/milestoneStatus'
+import {
+  parseAcceptanceCriteriaLines,
+  type MilestoneStatus,
+} from '../../lib/milestoneStatus'
 
 type ReviewPanelProps = {
   latest: Submission
   milestoneStatus: MilestoneStatus
+  acceptanceCriteria: string
+  maxRevisions: number
+  revisionRoundsUsed: number
   busy: boolean
   onReview: (
     submissionId: string,
     decision: ReviewDecision,
     feedback?: string,
+    unmetCriteria?: string[],
   ) => Promise<void>
 }
 
 export function ReviewPanel({
   latest,
   milestoneStatus,
+  acceptanceCriteria,
+  maxRevisions,
+  revisionRoundsUsed,
   busy,
   onReview,
 }: ReviewPanelProps) {
   const [showRevisionForm, setShowRevisionForm] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [selectedCriteria, setSelectedCriteria] = useState<string[]>([])
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [loadingDecision, setLoadingDecision] = useState<ReviewDecision | null>(
     null,
   )
 
-  async function run(decision: ReviewDecision, note?: string) {
+  const criteria = useMemo(
+    () => parseAcceptanceCriteriaLines(acceptanceCriteria),
+    [acceptanceCriteria],
+  )
+
+  const atRevisionLimit = revisionRoundsUsed >= maxRevisions
+
+  async function run(
+    decision: ReviewDecision,
+    note?: string,
+    unmet?: string[],
+  ) {
     setActionError(null)
     setLoadingDecision(decision)
     try {
-      await onReview(latest.id, decision, note)
+      await onReview(latest.id, decision, note, unmet)
       setShowRevisionForm(false)
       setFeedback('')
+      setSelectedCriteria([])
       setFeedbackError(null)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Review failed.')
@@ -51,8 +74,18 @@ export function ReviewPanel({
       setFeedbackError('Feedback is required when requesting a revision.')
       return
     }
+    if (selectedCriteria.length === 0) {
+      setFeedbackError('Select at least one unmet acceptance criterion.')
+      return
+    }
     setFeedbackError(null)
-    void run('REVISION_REQUESTED', trimmed)
+    void run('REVISION_REQUESTED', trimmed, selectedCriteria)
+  }
+
+  function toggleCriterion(item: string) {
+    setSelectedCriteria((prev) =>
+      prev.includes(item) ? prev.filter((c) => c !== item) : [...prev, item],
+    )
   }
 
   const canStart = milestoneStatus === 'SUBMITTED'
@@ -64,9 +97,16 @@ export function ReviewPanel({
         Review latest submission (rev {latest.revision})
       </p>
       <p className="font-mono text-[11px] text-dark/60">
-        Server authorization still applies. Freelancers cannot approve their own
-        work through this UI or the API.
+        Revision rounds used: {revisionRoundsUsed}/{maxRevisions}. At the limit,
+        only Approve or Open dispute remain.
       </p>
+
+      {atRevisionLimit ? (
+        <Alert tone="warning">
+          Maximum revision rounds reached. Request revision is blocked —
+          Approve or open a dispute.
+        </Alert>
+      ) : null}
 
       {actionError ? (
         <Alert tone="danger" role="alert">
@@ -99,7 +139,7 @@ export function ReviewPanel({
           <Button
             size="sm"
             variant="secondary"
-            disabled={loading}
+            disabled={loading || atRevisionLimit}
             onClick={() => {
               setShowRevisionForm(true)
               setActionError(null)
@@ -110,6 +150,26 @@ export function ReviewPanel({
         </div>
       ) : (
         <div className="space-y-3">
+          <fieldset className="space-y-2">
+            <legend className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
+              Unmet acceptance criteria
+            </legend>
+            {criteria.map((item) => (
+              <label
+                key={item}
+                className="flex items-start gap-2 font-body text-sm text-dark/80"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={selectedCriteria.includes(item)}
+                  disabled={loading}
+                  onChange={() => toggleCriterion(item)}
+                />
+                <span>{item}</span>
+              </label>
+            ))}
+          </fieldset>
           <Textarea
             label="Revision feedback"
             name="revisionFeedback"
@@ -135,6 +195,7 @@ export function ReviewPanel({
               onClick={() => {
                 setShowRevisionForm(false)
                 setFeedback('')
+                setSelectedCriteria([])
                 setFeedbackError(null)
               }}
             >
