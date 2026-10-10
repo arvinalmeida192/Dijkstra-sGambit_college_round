@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Input'
 import { SegmentedControl } from '../components/ui/SegmentedControl'
 import { AuthApiError, isAuthApiConfigured } from '../lib/api/auth'
 import { validateRegisterForm } from '../lib/authValidation'
-import type { UserRole } from '../lib/roles'
+import type { RegisterableRole } from '../lib/roles'
 import { routes } from '../lib/routes'
 
 const roleOptions = [
@@ -27,7 +27,7 @@ export function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [role, setRole] = useState<UserRole>('FREELANCER')
+  const [role, setRole] = useState<RegisterableRole>('FREELANCER')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -128,7 +128,7 @@ export function RegisterPage() {
             ariaLabel="Account role"
             options={roleOptions}
             value={role}
-            onChange={(value) => setRole(value as UserRole)}
+            onChange={(value) => setRole(value as RegisterableRole)}
             disabled={loading || Boolean(invite)}
           />
           {invite ? (
