@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
-import { Alert } from '../ui/Alert'
 import { Badge } from '../ui/Badge'
 import { EmptyState } from '../ui/EmptyState'
 import { PageContainer } from '../ui/PageContainer'
 import { Panel } from '../ui/Panel'
 import { SectionHeader } from '../ui/SectionHeader'
-import { Button } from '../ui/Button'
 
 type PlaceholderPageProps = {
   eyebrow: string
@@ -44,46 +41,3 @@ export function PlaceholderPage({
   )
 }
 
-type AuthPlaceholderProps = {
-  title: string
-  routePath: string
-  alternateLabel: string
-  alternateTo: string
-}
-
-export function AuthPlaceholder({
-  title,
-  routePath,
-  alternateLabel,
-  alternateTo,
-}: AuthPlaceholderProps) {
-  return (
-    <div className="min-h-screen bg-base flex flex-col">
-      <PageContainer variant="app" className="py-16 max-w-xl w-full">
-        <SectionHeader eyebrow="// Auth" title={title} meta={routePath} />
-        <Alert tone="info" className="mt-6">
-          Full login/register UI is Phase 06. This route exists so navigation and
-          deep links work now.
-        </Alert>
-        <Panel tone="surface" shadow="sm" className="mt-6 space-y-4">
-          <p className="font-body text-sm text-dark/70">
-            Forms, validation, and API integration are intentionally not
-            implemented here.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link to={alternateTo}>
-              <Button variant="secondary" size="sm">
-                {alternateLabel}
-              </Button>
-            </Link>
-            <Link to="/">
-              <Button variant="ghost" size="sm">
-                Back to landing
-              </Button>
-            </Link>
-          </div>
-        </Panel>
-      </PageContainer>
-    </div>
-  )
-}

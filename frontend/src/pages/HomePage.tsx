@@ -1,27 +1,32 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PublicFooter } from '../components/layout/PublicFooter'
 import { PublicHeader } from '../components/layout/PublicHeader'
+import { Alert } from '../components/ui/Alert'
 import { Button } from '../components/ui/Button'
 import { PageContainer } from '../components/ui/PageContainer'
-import { Panel } from '../components/ui/Panel'
 import { routes } from '../lib/routes'
+import { DisputeSection } from './landing/DisputeSection'
+import { FeaturesSection } from './landing/FeaturesSection'
+import { FinalCtaSection } from './landing/FinalCtaSection'
+import { HeroSection } from './landing/HeroSection'
+import { HowItWorksSection } from './landing/HowItWorksSection'
+import { ProblemSection } from './landing/ProblemSection'
+
+const navLinks = [
+  { href: '#the-problem', label: 'The Problem', index: '01' },
+  { href: '#how-it-works', label: 'Workflow', index: '02' },
+  { href: '#features', label: 'Features', index: '03' },
+  { href: '#dispute-flow', label: 'Disputes', index: '04' },
+]
 
 export function HomePage() {
+  const [params] = useSearchParams()
+  const invite = params.get('invite')?.trim()
+
   return (
-    <div
-      className="min-h-screen bg-base flex flex-col"
-      style={{
-        backgroundImage:
-          'linear-gradient(to right, rgba(11,11,11,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(11,11,11,0.05) 1px, transparent 1px)',
-        backgroundSize: '40px 40px',
-      }}
-    >
+    <div className="min-h-screen bg-base flex flex-col">
       <PublicHeader
-        links={[
-          { href: routes.dashboard, label: 'Dashboard', index: '01' },
-          { href: routes.projects, label: 'Projects', index: '02' },
-          { href: routes.uiDemo, label: 'UI Kit', index: '03' },
-        ]}
+        links={navLinks}
         primaryAction={
           <div className="flex items-center gap-2">
             <Link to={routes.login}>
@@ -29,49 +34,56 @@ export function HomePage() {
                 Login
               </Button>
             </Link>
-            <Link to={routes.register}>
+            <Link
+              to={
+                invite
+                  ? `${routes.register}?invite=${encodeURIComponent(invite)}`
+                  : routes.register
+              }
+            >
               <Button size="sm">Get Started</Button>
             </Link>
           </div>
         }
       />
 
-      <PageContainer variant="marketing" className="py-16 flex-1">
-        <Panel tone="surface" shadow="lg" padding="lg" className="max-w-3xl">
-          <p className="font-mono text-xs font-bold text-accent uppercase tracking-widest">
-            Fairwork // Phase 05 shell
-          </p>
-          <h1 className="mt-4 font-display font-black text-5xl md:text-6xl uppercase tracking-tighter text-dark leading-[0.9]">
-            Get Paid <span className="text-accent">For What</span> You Deliver
-          </h1>
-          <p className="mt-6 font-body text-dark/70 max-w-xl">
-            App shell and approved routes are wired. Landing and auth screens
-            are filled in Phase 06; these links verify navigation now.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to={routes.dashboard}>
-              <Button>Open dashboard</Button>
-            </Link>
-            <Link to={routes.project('demo')}>
-              <Button variant="secondary">Demo project</Button>
-            </Link>
-            <Link to={routes.uiDemo}>
-              <Button variant="ghost">UI demo</Button>
-            </Link>
-          </div>
-        </Panel>
-      </PageContainer>
+      {invite ? (
+        <PageContainer variant="marketing" className="pt-4">
+          <Alert tone="info">
+            Invitation detected ({invite}). Create an account to join the project —
+            invitation acceptance wires up in later phases.
+          </Alert>
+        </PageContainer>
+      ) : null}
+
+      <HeroSection />
+      <ProblemSection />
+      <HowItWorksSection />
+      <FeaturesSection />
+      <DisputeSection />
+      <FinalCtaSection />
 
       <PublicFooter
         columns={[
           {
-            title: 'App',
+            title: 'Product',
             links: [
-              { href: routes.dashboard, label: 'Dashboard' },
-              { href: routes.projects, label: 'Projects' },
+              { href: '#how-it-works', label: 'Workflow' },
+              { href: '#features', label: 'Features' },
+              { href: '#dispute-flow', label: 'Disputes' },
+            ],
+          },
+          {
+            title: 'Account',
+            links: [
               { href: routes.login, label: 'Login' },
               { href: routes.register, label: 'Register' },
+              { href: routes.dashboard, label: 'Dashboard' },
             ],
+          },
+          {
+            title: 'Dev',
+            links: [{ href: routes.uiDemo, label: 'UI Kit' }],
           },
         ]}
       />
