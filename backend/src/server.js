@@ -14,6 +14,7 @@ async function main() {
     console.log(`Projects: /api/v1/projects | /api/v1/invitations/:token`)
     console.log(`Agreements: /api/v1/projects/:id/agreements | /api/v1/agreements/:id`)
     console.log(`Milestones: /api/v1/projects/:id/milestones | /api/v1/milestones/:id`)
+    console.log(`Submissions: /api/v1/milestones/:id/submissions | /api/v1/submissions/:id`)
   })
 }
 
