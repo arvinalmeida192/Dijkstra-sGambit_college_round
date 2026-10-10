@@ -15,6 +15,7 @@ import { Textarea } from '../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../lib/agreementStatus'
 import { ApiError, isApiConfigured } from '../lib/api/client'
 import {
+  acceptDisputeResolution,
   addDisputeEvidence,
   claimDispute,
   decideDispute,
@@ -22,9 +23,12 @@ import {
   getDispute,
   listProjectDisputes,
   openDispute,
+  proposeDisputeResolution,
+  resolveDisputeAsArbitrator,
   type Dispute,
   type DisputeDecision,
   type DisputeEvidence,
+  type DisputeResolutionOutcome,
 } from '../lib/api/disputes'
 import { listMilestones, type Milestone } from '../lib/api/milestones'
 import { getProject, type Project } from '../lib/api/projects'
@@ -32,6 +36,9 @@ import {
   DISPUTE_DECISION_LABELS,
   DISPUTE_STATUS_LABELS,
   DISPUTE_STATUS_TONES,
+  RESOLUTION_OUTCOME_LABELS,
+  RESOLUTION_OUTCOME_TONES,
+  RESOLUTION_TYPE_LABELS,
 } from '../lib/disputeStatus'
 import { routes } from '../lib/routes'
 import { DisputeAiPanel } from './disputes/DisputeAiPanel'
@@ -48,7 +55,25 @@ const DECISION_OPTIONS: { value: DisputeDecision; label: string }[] = [
   { value: 'SPLIT', label: DISPUTE_DECISION_LABELS.SPLIT },
 ]
 
-function formatDate(iso: string | null) {
+const RESOLUTION_OUTCOME_OPTIONS: {
+  value: DisputeResolutionOutcome
+  label: string
+}[] = [
+  {
+    value: 'RESUME_EXISTING',
+    label: RESOLUTION_OUTCOME_LABELS.RESUME_EXISTING,
+  },
+  {
+    value: 'RESUME_WITH_CHANGES',
+    label: RESOLUTION_OUTCOME_LABELS.RESUME_WITH_CHANGES,
+  },
+  {
+    value: 'TERMINATE_WORK',
+    label: RESOLUTION_OUTCOME_LABELS.TERMINATE_WORK,
+  },
+]
+
+function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   try {
     return new Date(iso).toLocaleString(undefined, {
@@ -90,6 +115,15 @@ export function DisputesPage() {
   const [decision, setDecision] = useState<DisputeDecision>('RELEASE_TO_FREELANCER')
   const [rationale, setRationale] = useState('')
   const [splitAmount, setSplitAmount] = useState('')
+
+  const [arbOutcome, setArbOutcome] =
+    useState<DisputeResolutionOutcome>('RESUME_EXISTING')
+  const [arbSummary, setArbSummary] = useState('')
+
+  const [mutualOutcome, setMutualOutcome] =
+    useState<DisputeResolutionOutcome>('RESUME_EXISTING')
+  const [mutualSummary, setMutualSummary] = useState('')
+  const [showProposeForm, setShowProposeForm] = useState(false)
 
   const isClient = Boolean(user && project && user.id === project.clientId)
   const isFreelancer = Boolean(
@@ -269,6 +303,82 @@ export function DisputesPage() {
     }
   }
 
+  async function handleArbitratorResolve() {
+    if (!token || !detail) return
+    const trimmed = arbSummary.trim()
+    if (!trimmed) {
+      setActionError('Resolution summary is required.')
+      return
+    }
+    setBusy(true)
+    setActionError(null)
+    setActionSuccess(null)
+    try {
+      const result = await resolveDisputeAsArbitrator(token, detail.id, {
+        outcome: arbOutcome,
+        summary: trimmed,
+      })
+      setActionSuccess(result.notice)
+      setDetail(result.dispute)
+      setArbSummary('')
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not resolve dispute.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleProposeResolution() {
+    if (!token || !detail) return
+    const trimmed = mutualSummary.trim()
+    if (trimmed.length < 3) {
+      setActionError('Proposal summary must be at least 3 characters.')
+      return
+    }
+    setBusy(true)
+    setActionError(null)
+    setActionSuccess(null)
+    try {
+      const result = await proposeDisputeResolution(token, detail.id, {
+        outcome: mutualOutcome,
+        summary: trimmed,
+      })
+      setActionSuccess(result.notice)
+      setDetail(result.dispute)
+      setMutualSummary('')
+      setShowProposeForm(false)
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not propose resolution.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleAcceptResolution() {
+    if (!token || !detail) return
+    setBusy(true)
+    setActionError(null)
+    setActionSuccess(null)
+    try {
+      const result = await acceptDisputeResolution(token, detail.id)
+      setActionSuccess(result.notice)
+      setDetail(result.dispute)
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError ? err.message : 'Could not accept resolution.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleEvidence() {
     if (!token || !detail) return
     if (!evidenceNotes.trim() && !evidenceUrl.trim() && !evidenceFile) {
@@ -429,6 +539,11 @@ export function DisputesPage() {
                     <p className="mt-1 font-mono text-xs font-bold text-dark">
                       {milestoneTitle(d.milestoneId)}
                     </p>
+                    {d.resolutionOutcome ? (
+                      <p className="mt-0.5 font-mono text-[10px] text-accent font-semibold">
+                        {RESOLUTION_OUTCOME_LABELS[d.resolutionOutcome]}
+                      </p>
+                    ) : null}
                     <p className="mt-1 line-clamp-2 font-body text-xs text-dark/70">
                       {d.reason}
                     </p>
@@ -468,6 +583,66 @@ export function DisputesPage() {
                           ? ` · Reviewer ${detail.arbitratorId.slice(0, 8)}`
                           : ''}
                       </p>
+                      {detail.resolutionOutcome ? (
+                        <div className="space-y-2 border border-dark/20 bg-white p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge
+                              tone={
+                                RESOLUTION_OUTCOME_TONES[
+                                  detail.resolutionOutcome
+                                ]
+                              }
+                              dot
+                            >
+                              {
+                                RESOLUTION_OUTCOME_LABELS[
+                                  detail.resolutionOutcome
+                                ]
+                              }
+                            </Badge>
+                            {detail.resolutionType ? (
+                              <Badge tone="neutral">
+                                {RESOLUTION_TYPE_LABELS[detail.resolutionType]}
+                              </Badge>
+                            ) : null}
+                          </div>
+                          {detail.resolutionSummary ? (
+                            <p className="font-body text-sm text-dark/80">
+                              <strong>Summary:</strong>{' '}
+                              {detail.resolutionSummary}
+                            </p>
+                          ) : null}
+                          <p className="font-mono text-[10px] text-dark/50">
+                            Resolved {formatDate(detail.resolvedAt)}
+                            {detail.resolvedBy
+                              ? ` · By user ${detail.resolvedBy.slice(0, 8)}`
+                              : ''}
+                          </p>
+                          {detail.resolutionOutcome === 'RESUME_EXISTING' ||
+                          detail.resolutionOutcome === 'RESUME_WITH_CHANGES' ? (
+                            <div className="pt-2 border-t border-dark/10 flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-body text-xs text-status-success font-medium">
+                                Work resumed (Milestone is In Progress). Freelancer can submit deliverables.
+                              </span>
+                              <Link
+                                to={
+                                  projectId
+                                    ? routes.progress(projectId)
+                                    : routes.projects
+                                }
+                                className="font-mono text-xs font-bold text-accent hover:underline"
+                              >
+                                Go to Progress →
+                              </Link>
+                            </div>
+                          ) : (
+                            <p className="font-body text-xs text-status-danger pt-1">
+                              Work terminated (Milestone is Cancelled). Further submissions are blocked.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+
                       {detail.decision ? (
                         <Alert tone="info">
                           Decision:{' '}
@@ -483,6 +658,60 @@ export function DisputesPage() {
                             ? ` Rationale: ${detail.decisionRationale}`
                             : ''}
                         </Alert>
+                      ) : null}
+
+                      {detail.status !== 'RESOLVED' &&
+                      detail.resolutionProposal ? (
+                        <div className="space-y-2 border-2 border-accent/40 bg-accent/5 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-mono text-xs font-bold uppercase text-accent">
+                              Resolution proposal pending
+                            </span>
+                            <Badge
+                              tone={
+                                RESOLUTION_OUTCOME_TONES[
+                                  detail.resolutionProposal.outcome
+                                ]
+                              }
+                            >
+                              {
+                                RESOLUTION_OUTCOME_LABELS[
+                                  detail.resolutionProposal.outcome
+                                ]
+                              }
+                            </Badge>
+                          </div>
+                          <p className="font-body text-sm text-dark/80">
+                            {detail.resolutionProposal.summary}
+                          </p>
+                          <p className="font-mono text-[10px] text-dark/50">
+                            Proposed{' '}
+                            {formatDate(
+                              detail.resolutionProposal.proposedAt,
+                            )}
+                          </p>
+                          {user &&
+                          detail.resolutionProposal.proposedBy !== user.id &&
+                          (isClient || isFreelancer) ? (
+                            <div className="pt-2 border-t border-dark/10 flex flex-wrap items-center gap-3">
+                              <Button
+                                loading={busy}
+                                size="sm"
+                                onClick={() => void handleAcceptResolution()}
+                              >
+                                Accept proposal &amp; resolve dispute
+                              </Button>
+                              <span className="font-body text-xs text-dark/60">
+                                Accepting will resolve the dispute and update milestone work state.
+                              </span>
+                            </div>
+                          ) : user &&
+                            detail.resolutionProposal.proposedBy === user.id ? (
+                            <p className="font-body text-xs text-dark/60 italic pt-1">
+                              You proposed this resolution. Waiting for counterparty to accept.
+                            </p>
+                          ) : null}
+                        </div>
                       ) : null}
 
                       {isArbitrator && detail.status === 'OPEN' ? (
@@ -590,6 +819,103 @@ export function DisputesPage() {
                         </div>
                       ) : null}
                     </Panel>
+
+                    {isArbitrator &&
+                    (detail.status === 'OPEN' ||
+                      detail.status === 'UNDER_REVIEW') ? (
+                      <Panel className="space-y-3">
+                        <h3 className="font-display text-lg text-dark">
+                          Resolve dispute (Arbitrator)
+                        </h3>
+                        <p className="font-body text-xs text-dark/70">
+                          Resolve this dispute and determine the next workflow step for the milestone.
+                          Choosing “Resume work” returns the milestone to In Progress so submissions can continue.
+                          Choosing “End affected work” cancels the milestone.
+                        </p>
+                        <Select
+                          label="Resolution outcome"
+                          name="arbOutcome"
+                          value={arbOutcome}
+                          onChange={(e) =>
+                            setArbOutcome(
+                              e.target.value as DisputeResolutionOutcome,
+                            )
+                          }
+                          options={RESOLUTION_OUTCOME_OPTIONS}
+                          disabled={busy}
+                        />
+                        <Textarea
+                          label="Resolution summary"
+                          name="arbSummary"
+                          value={arbSummary}
+                          onChange={(e) => setArbSummary(e.target.value)}
+                          rows={3}
+                          disabled={busy}
+                          hint="Summary of findings and instructions for work resumption or termination."
+                        />
+                        <Button
+                          loading={busy}
+                          onClick={() => void handleArbitratorResolve()}
+                        >
+                          Resolve dispute
+                        </Button>
+                      </Panel>
+                    ) : null}
+
+                    {(isClient || isFreelancer) &&
+                    (detail.status === 'OPEN' ||
+                      detail.status === 'UNDER_REVIEW') ? (
+                      <Panel className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h3 className="font-display text-lg text-dark">
+                              Mutual resolution
+                            </h3>
+                            <p className="font-body text-xs text-dark/70">
+                              Propose an outcome to the counterparty. If accepted, work resumes or completes accordingly.
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setShowProposeForm((v) => !v)}
+                          >
+                            {showProposeForm ? 'Hide form' : 'Propose resolution'}
+                          </Button>
+                        </div>
+                        {showProposeForm ? (
+                          <div className="space-y-3 border-t border-dark/10 pt-3">
+                            <Select
+                              label="Proposed outcome"
+                              name="mutualOutcome"
+                              value={mutualOutcome}
+                              onChange={(e) =>
+                                setMutualOutcome(
+                                  e.target.value as DisputeResolutionOutcome,
+                                )
+                              }
+                              options={RESOLUTION_OUTCOME_OPTIONS}
+                              disabled={busy}
+                            />
+                            <Textarea
+                              label="Proposal summary"
+                              name="mutualSummary"
+                              value={mutualSummary}
+                              onChange={(e) => setMutualSummary(e.target.value)}
+                              rows={3}
+                              disabled={busy}
+                              hint="Describe the agreed terms (minimum 3 characters)."
+                            />
+                            <Button
+                              loading={busy}
+                              onClick={() => void handleProposeResolution()}
+                            >
+                              Send proposal
+                            </Button>
+                          </div>
+                        ) : null}
+                      </Panel>
+                    ) : null}
 
                     {isArbitrator &&
                     (detail.status === 'OPEN' ||

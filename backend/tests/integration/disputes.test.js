@@ -249,4 +249,189 @@ describe('disputes API', () => {
     expect(ok.body.milestone.status).toBe('IN_REVIEW')
     expect(ok.body.dispute.fundsMovedByDecision).toBe(false)
   })
+
+  it('resolves dispute with RESUME_EXISTING and allows work and submissions to resume', async () => {
+    const ctx = await setupProject()
+
+    // 1. Open dispute
+    const openRes = await request(app)
+      .post(`/api/v1/milestones/${ctx.milestone.id}/disputes`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ reason: 'Scope alignment needed' })
+    expect(openRes.status).toBe(201)
+    const disputeId = openRes.body.dispute.id
+    expect(openRes.body.milestone.status).toBe('DISPUTED')
+
+    // 2. Client cannot change milestone status directly while DISPUTED
+    const directChange = await request(app)
+      .patch(`/api/v1/milestones/${ctx.milestone.id}/status`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ status: 'IN_PROGRESS' })
+    expect(directChange.status).toBe(409)
+
+    // 3. Non-arbitrator cannot resolve via arbitrator endpoint
+    const clientResolve = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/resolve`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({
+        outcome: 'RESUME_EXISTING',
+        summary: 'Try resolving',
+      })
+    expect(clientResolve.status).toBe(403)
+
+    // 4. Arbitrator resolves dispute with RESUME_EXISTING
+    const resolveRes = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/resolve`)
+      .set('Authorization', `Bearer ${ctx.arbitrator.token}`)
+      .send({
+        outcome: 'RESUME_EXISTING',
+        summary: 'Both parties agree on scope; work may resume.',
+      })
+    expect(resolveRes.status).toBe(200)
+    expect(resolveRes.body.dispute.status).toBe('RESOLVED')
+    expect(resolveRes.body.dispute.resolutionOutcome).toBe('RESUME_EXISTING')
+    expect(resolveRes.body.dispute.resolutionType).toBe('ARBITRATOR_DECISION')
+    expect(resolveRes.body.dispute.resolutionSummary).toBe(
+      'Both parties agree on scope; work may resume.',
+    )
+    expect(resolveRes.body.dispute.resolvedBy).toBe(ctx.arbitrator.user.id)
+    expect(resolveRes.body.dispute.resolvedAt).toBeDefined()
+    expect(resolveRes.body.dispute.fundsMovedByDecision).toBe(false)
+    expect(resolveRes.body.milestone.status).toBe('IN_PROGRESS')
+
+    // 5. Duplicate resolution rejected
+    const dupResolve = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/resolve`)
+      .set('Authorization', `Bearer ${ctx.arbitrator.token}`)
+      .send({
+        outcome: 'RESUME_EXISTING',
+        summary: 'Duplicate call',
+      })
+    expect(dupResolve.status).toBe(409)
+
+    // 6. Resumed submission workflow: Freelancer submits deliverable
+    const subRes = await request(app)
+      .post(`/api/v1/milestones/${ctx.milestone.id}/submissions`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .field('notes', 'Completed feature after dispute')
+      .attach('file', Buffer.from('deliverable-content'), {
+        filename: 'feature.zip',
+        contentType: 'application/zip',
+      })
+    expect(subRes.status).toBe(201)
+    expect(subRes.body.submission.revision).toBe(1)
+    expect(subRes.body.milestone.status).toBe('SUBMITTED')
+
+    // 7. Client reviews and approves resumed submission
+    const reviewRes = await request(app)
+      .post(`/api/v1/submissions/${subRes.body.submission.id}/review`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({
+        decision: 'APPROVED',
+        feedback: 'Looks good!',
+      })
+    expect(reviewRes.status).toBe(200)
+    expect(reviewRes.body.milestone.status).toBe('APPROVED')
+  })
+
+  it('supports mutual resolution: propose, reject self-accept, accept by counterparty', async () => {
+    const ctx = await setupProject()
+
+    const openRes = await request(app)
+      .post(`/api/v1/milestones/${ctx.milestone.id}/disputes`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ reason: 'Disagreement on acceptance test' })
+    expect(openRes.status).toBe(201)
+    const disputeId = openRes.body.dispute.id
+
+    // Outsider cannot propose resolution
+    const outsiderPropose = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/propose-resolution`)
+      .set('Authorization', `Bearer ${ctx.outsider.token}`)
+      .send({
+        outcome: 'RESUME_EXISTING',
+        summary: 'Outsider proposal',
+      })
+    expect(outsiderPropose.status).toBe(403)
+
+    // Client proposes mutual resolution
+    const proposeRes = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/propose-resolution`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({
+        outcome: 'RESUME_WITH_CHANGES',
+        summary: 'Mutually agreed to revise criteria and resume.',
+      })
+    expect(proposeRes.status).toBe(200)
+    expect(proposeRes.body.dispute.resolutionProposal.outcome).toBe(
+      'RESUME_WITH_CHANGES',
+    )
+    expect(proposeRes.body.dispute.resolutionProposal.proposedBy).toBe(
+      ctx.client.user.id,
+    )
+
+    // Proposer cannot accept their own proposal
+    const selfAccept = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/accept-resolution`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+    expect(selfAccept.status).toBe(403)
+
+    // Counterparty (freelancer) accepts proposal
+    const acceptRes = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/accept-resolution`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+    expect(acceptRes.status).toBe(200)
+    expect(acceptRes.body.dispute.status).toBe('RESOLVED')
+    expect(acceptRes.body.dispute.resolutionType).toBe('MUTUAL_AGREEMENT')
+    expect(acceptRes.body.dispute.resolutionOutcome).toBe('RESUME_WITH_CHANGES')
+    expect(acceptRes.body.dispute.resolutionProposal).toBeNull()
+    expect(acceptRes.body.milestone.status).toBe('IN_PROGRESS')
+  })
+
+  it('resolves dispute with TERMINATE_WORK and blocks further submissions', async () => {
+    const ctx = await setupProject()
+
+    const openRes = await request(app)
+      .post(`/api/v1/milestones/${ctx.milestone.id}/disputes`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ reason: 'Irreconcilable differences' })
+    expect(openRes.status).toBe(201)
+    const disputeId = openRes.body.dispute.id
+
+    // Upload evidence before resolution
+    const evRes = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/evidence`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+      .send({ notes: 'Initial evidence before termination' })
+    expect(evRes.status).toBe(201)
+
+    // Arbitrator resolves with TERMINATE_WORK
+    const resolveRes = await request(app)
+      .post(`/api/v1/disputes/${disputeId}/resolve`)
+      .set('Authorization', `Bearer ${ctx.arbitrator.token}`)
+      .send({
+        outcome: 'TERMINATE_WORK',
+        summary: 'Parties agree to terminate work on this milestone.',
+      })
+    expect(resolveRes.status).toBe(200)
+    expect(resolveRes.body.dispute.status).toBe('RESOLVED')
+    expect(resolveRes.body.dispute.resolutionOutcome).toBe('TERMINATE_WORK')
+    expect(resolveRes.body.milestone.status).toBe('CANCELLED')
+
+    // Further submissions on CANCELLED milestone must be blocked
+    const subFail = await request(app)
+      .post(`/api/v1/milestones/${ctx.milestone.id}/submissions`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ notes: 'Attempting to submit after termination' })
+    expect(subFail.status).toBe(409)
+
+    // Dispute history and evidence remain accessible
+    const getRes = await request(app)
+      .get(`/api/v1/disputes/${disputeId}`)
+      .set('Authorization', `Bearer ${ctx.client.token}`)
+    expect(getRes.status).toBe(200)
+    expect(getRes.body.dispute.status).toBe('RESOLVED')
+    expect(getRes.body.dispute.resolutionOutcome).toBe('TERMINATE_WORK')
+    expect(getRes.body.dispute.evidence).toHaveLength(1)
+  })
 })
