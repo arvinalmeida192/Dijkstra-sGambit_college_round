@@ -142,18 +142,13 @@ export function PaymentsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [projectResult, milestonesResult, fundingResult, paymentsResult] =
+      const [projectResult, milestonesResult, fundingResult, paymentsResult, auditResult] =
         await Promise.all([
           getProject(token, projectId),
           listMilestones(token, projectId),
           getFundingStatus(token, projectId).catch(() => null),
           listProjectPayments(token, projectId).catch(() => ({ payments: [] })),
-      const [projectResult, milestonesResult, paymentsResult, auditResult] =
-        await Promise.all([
-          getProject(token, projectId),
-          listMilestones(token, projectId),
-          listProjectPayments(token, projectId),
-          listProjectAuditLogs(token, projectId),
+          listProjectAuditLogs(token, projectId).catch(() => ({ auditLogs: [] })),
         ])
       setProject(projectResult.project)
       setMilestones(milestonesResult.milestones)
@@ -781,9 +776,6 @@ export function PaymentsPage() {
               </div>
             )}
           </div>
-              ))}
-            </div>
-          )}
 
           <Panel className="space-y-3">
             <h2 className="font-display text-lg text-dark">
