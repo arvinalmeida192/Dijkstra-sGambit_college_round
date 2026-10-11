@@ -46,6 +46,11 @@ projectsRouter.post(
   requireRoles('CLIENT'),
   projectController.createInvitation,
 )
+projectsRouter.post(
+  '/:id/invitations/:invitationId/withdraw',
+  requireRoles('CLIENT'),
+  projectController.withdrawInvitation,
+)
 projectsRouter.use('/:id/agreements', projectAgreementsRouter)
 projectsRouter.use('/:id/milestones', projectMilestonesRouter)
 projectsRouter.use('/:id/payments', projectPaymentsRouter)
@@ -59,4 +64,10 @@ invitationsRouter.post(
   authenticate(true),
   requireRoles('FREELANCER'),
   projectController.acceptInvitation,
+)
+invitationsRouter.post(
+  '/:token/reject',
+  authenticate(true),
+  requireRoles('FREELANCER'),
+  projectController.rejectInvitation,
 )

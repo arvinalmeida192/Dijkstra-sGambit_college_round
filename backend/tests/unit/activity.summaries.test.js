@@ -53,6 +53,23 @@ describe('summarizeAuditAction', () => {
         { milestoneTitle: 'Milestone 2' },
       ),
     ).toBe('Payment verified for Milestone 2')
+    expect(
+      summarizeAuditAction(
+        'INVITATION_CREATED',
+        { invitedEmail: 'freelancer@example.com' },
+        {},
+      ),
+    ).toBe('Work invitation sent for freelancer@example.com')
+    expect(summarizeAuditAction('INVITATION_ACCEPTED', {}, {})).toBe(
+      'Work invitation accepted',
+    )
+    expect(summarizeAuditAction('INVITATION_REJECTED', {}, {})).toBe(
+      'Work invitation rejected',
+    )
+    expect(summarizeAuditAction('INVITATION_REVOKED', {}, {})).toBe(
+      'Work invitation withdrawn',
+    )
+    expect(categorizeAuditAction('INVITATION_CREATED')).toBe('invitation')
   })
 })
 

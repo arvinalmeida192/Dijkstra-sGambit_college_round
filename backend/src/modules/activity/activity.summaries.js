@@ -28,6 +28,10 @@ const CATEGORY_BY_ACTION = {
   DISPUTE_EVIDENCE_ADDED: 'dispute',
   DISPUTE_RESOLUTION_PROPOSED: 'dispute',
   DISPUTE_RESOLVED: 'dispute',
+  INVITATION_CREATED: 'invitation',
+  INVITATION_ACCEPTED: 'invitation',
+  INVITATION_REJECTED: 'invitation',
+  INVITATION_REVOKED: 'invitation',
 }
 
 function milestoneLabel(milestoneTitle) {
@@ -104,6 +108,19 @@ export function summarizeAuditAction(action, metadata = {}, context = {}) {
       return 'Dispute resolution proposed'
     case 'DISPUTE_RESOLVED':
       return 'Dispute resolved'
+    case 'INVITATION_CREATED': {
+      const target =
+        typeof meta.invitedEmail === 'string' && meta.invitedEmail.trim()
+          ? ` for ${meta.invitedEmail.trim()}`
+          : ''
+      return `Work invitation sent${target}`
+    }
+    case 'INVITATION_ACCEPTED':
+      return 'Work invitation accepted'
+    case 'INVITATION_REJECTED':
+      return 'Work invitation rejected'
+    case 'INVITATION_REVOKED':
+      return 'Work invitation withdrawn'
     default: {
       const readable = String(action || 'Activity')
         .toLowerCase()

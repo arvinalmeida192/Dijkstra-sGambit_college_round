@@ -50,3 +50,22 @@ export const acceptInvitation = asyncHandler(async (req, res) => {
   )
   res.status(200).json({ project })
 })
+
+export const rejectInvitation = asyncHandler(async (req, res) => {
+  const result = await projectService.rejectInvitation(
+    req.user,
+    req.params.token,
+  )
+  res.status(200).json(result)
+})
+
+export const withdrawInvitation = asyncHandler(async (req, res) => {
+  assertUuid(req.params.id, 'project id')
+  assertUuid(req.params.invitationId, 'invitation id')
+  const result = await projectService.withdrawInvitation(
+    req.user,
+    req.params.id,
+    req.params.invitationId,
+  )
+  res.status(200).json(result)
+})

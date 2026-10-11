@@ -9,6 +9,7 @@ export async function insertNotificationIgnoreConflict(
     userId,
     projectId = null,
     milestoneId = null,
+    invitationId = null,
     kind,
     subjectKey,
     title,
@@ -18,22 +19,45 @@ export async function insertNotificationIgnoreConflict(
 ) {
   const { rows } = await db(client).query(
     `INSERT INTO notifications (
-       user_id, project_id, milestone_id, kind, subject_key, title, body
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+       user_id, project_id, milestone_id, invitation_id, kind, subject_key, title, body
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      ON CONFLICT (user_id, kind, subject_key) DO NOTHING
      RETURNING *`,
-    [userId, projectId, milestoneId, kind, subjectKey, title, body],
+    [userId, projectId, milestoneId, invitationId, kind, subjectKey, title, body],
   )
   return rows[0] ?? null
 }
 
 export async function listNotificationsForUser(userId, { unreadOnly = false } = {}) {
   const params = [userId]
-  let sql = `SELECT * FROM notifications WHERE user_id = $1`
+  let sql = `
+    SELECT n.*,
+           i.token AS invitation_token,
+           i.status AS invitation_status,
+           i.invited_email AS invitation_email,
+           i.invited_user_id AS invitation_user_id,
+           i.message AS invitation_message,
+           i.expires_at AS invitation_expires_at,
+           i.created_at AS invitation_created_at,
+           i.accepted_at AS invitation_accepted_at,
+           i.rejected_at AS invitation_rejected_at,
+           i.revoked_at AS invitation_revoked_at,
+           p.title AS project_title,
+           p.status AS project_status,
+           p.freelancer_id AS project_freelancer_id,
+           c.id AS sender_id,
+           c.name AS sender_name,
+           c.email AS sender_email
+    FROM notifications n
+    LEFT JOIN project_invitations i ON i.id = n.invitation_id
+    LEFT JOIN projects p ON p.id = COALESCE(n.project_id, i.project_id)
+    LEFT JOIN users c ON c.id = COALESCE(i.created_by, p.client_id)
+    WHERE n.user_id = $1
+  `
   if (unreadOnly) {
-    sql += ` AND read_at IS NULL`
+    sql += ` AND n.read_at IS NULL`
   }
-  sql += ` ORDER BY created_at DESC LIMIT 100`
+  sql += ` ORDER BY n.created_at DESC LIMIT 100`
   const { rows } = await query(sql, params)
   return rows
 }
@@ -158,11 +182,61 @@ export async function hasOpenDispute(milestoneId) {
 
 export function toPublicNotification(row) {
   if (!row) return null
+  const invitationId = row.invitation_id ?? null
+  let invitation = null
+  if (invitationId && row.invitation_token) {
+    const expired =
+      row.invitation_status === 'PENDING' &&
+      row.invitation_expires_at &&
+      new Date(row.invitation_expires_at).getTime() < Date.now()
+
+    invitation = {
+      id: invitationId,
+      token: row.invitation_token,
+      status: expired ? 'EXPIRED' : row.invitation_status,
+      invitedEmail: row.invitation_email ?? null,
+      invitedUserId: row.invitation_user_id ?? null,
+      message: row.invitation_message ?? null,
+      expiresAt:
+        row.invitation_expires_at?.toISOString?.() ??
+        row.invitation_expires_at ??
+        null,
+      createdAt:
+        row.invitation_created_at?.toISOString?.() ??
+        row.invitation_created_at ??
+        null,
+      acceptedAt:
+        row.invitation_accepted_at?.toISOString?.() ??
+        row.invitation_accepted_at ??
+        null,
+      rejectedAt:
+        row.invitation_rejected_at?.toISOString?.() ??
+        row.invitation_rejected_at ??
+        null,
+      revokedAt:
+        row.invitation_revoked_at?.toISOString?.() ??
+        row.invitation_revoked_at ??
+        null,
+      projectTitle: row.project_title ?? null,
+      projectStatus: row.project_status ?? null,
+      hasFreelancer: Boolean(row.project_freelancer_id),
+      sender: row.sender_id
+        ? {
+            id: row.sender_id,
+            name: row.sender_name,
+            email: row.sender_email,
+          }
+        : null,
+    }
+  }
+
   return {
     id: row.id,
     userId: row.user_id,
     projectId: row.project_id ?? null,
     milestoneId: row.milestone_id ?? null,
+    invitationId,
+    invitation,
     kind: row.kind,
     subjectKey: row.subject_key,
     title: row.title,

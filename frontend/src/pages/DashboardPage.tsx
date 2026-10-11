@@ -52,8 +52,11 @@ export function DashboardPage() {
     }
 
     void load()
+    const handler = () => void load()
+    window.addEventListener('fairwork:invitation-updated', handler)
     return () => {
       cancelled = true
+      window.removeEventListener('fairwork:invitation-updated', handler)
     }
   }, [token])
 

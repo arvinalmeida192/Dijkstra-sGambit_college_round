@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Copy, Link2 } from 'lucide-react'
+import { Copy, Link2, XCircle } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { Alert } from '../components/ui/Alert'
 import { Badge } from '../components/ui/Badge'
@@ -10,11 +10,14 @@ import { LoadingBlock } from '../components/ui/Spinner'
 import { PageContainer } from '../components/ui/PageContainer'
 import { Panel } from '../components/ui/Panel'
 import { SectionHeader } from '../components/ui/SectionHeader'
+import { Textarea } from '../components/ui/Textarea'
 import { ApiError, isApiConfigured } from '../lib/api/client'
 import {
   createInvitation,
   getProject,
   inviteShareUrl,
+  withdrawInvitation,
+  type InvitationStatus,
   type Project,
   type ProjectInvitation,
 } from '../lib/api/projects'
@@ -38,6 +41,26 @@ function formatDate(iso: string) {
   }
 }
 
+function invitationTone(status: InvitationStatus) {
+  switch (status) {
+    case 'PENDING':
+      return 'warning' as const
+    case 'ACCEPTED':
+      return 'success' as const
+    case 'REJECTED':
+      return 'danger' as const
+    case 'REVOKED':
+    case 'EXPIRED':
+    default:
+      return 'neutral' as const
+  }
+}
+
+function invitationLabel(status: InvitationStatus) {
+  if (status === 'REVOKED') return 'WITHDRAWN'
+  return status
+}
+
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams()
   const { token, user } = useAuth()
@@ -47,9 +70,12 @@ export function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [inviteNotified, setInviteNotified] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
@@ -74,6 +100,9 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     void load()
+    const handler = () => void load()
+    window.addEventListener('fairwork:invitation-updated', handler)
+    return () => window.removeEventListener('fairwork:invitation-updated', handler)
   }, [load])
 
   const isOwner =
@@ -89,14 +118,18 @@ export function ProjectDetailPage() {
     if (!token || !project) return
     setInviteError(null)
     setInviteSuccess(null)
+    setInviteNotified(false)
     setCopied(false)
     setInviteLoading(true)
     try {
       const email = inviteEmail.trim() || undefined
-      const result = await createInvitation(token, project.id, { email })
+      const message = inviteMessage.trim() || undefined
+      const result = await createInvitation(token, project.id, { email, message })
       const shareUrl = inviteShareUrl(result.invitation.token)
       setInviteSuccess(shareUrl)
+      setInviteNotified(Boolean(result.notifiedFreelancer))
       setInviteEmail('')
+      setInviteMessage('')
       await load()
     } catch (err) {
       setInviteError(
@@ -106,6 +139,25 @@ export function ProjectDetailPage() {
       )
     } finally {
       setInviteLoading(false)
+    }
+  }
+
+  async function onWithdrawInvite(invitationId: string) {
+    if (!token || !project || withdrawingId) return
+    setInviteError(null)
+    setInviteSuccess(null)
+    setWithdrawingId(invitationId)
+    try {
+      await withdrawInvitation(token, project.id, invitationId)
+      await load()
+    } catch (err) {
+      setInviteError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not withdraw invitation.',
+      )
+    } finally {
+      setWithdrawingId(null)
     }
   }
 
@@ -246,18 +298,15 @@ export function ProjectDetailPage() {
                 </h3>
               </div>
               <p className="font-body text-sm text-dark/70">
-                Generate a shareable link. Optionally lock the invite to an
-                email address. Creating a new invite revokes any previous
-                pending link.
+                Invite a registered freelancer by email to send an actionable
+                in-app notification, or generate a shareable link. Creating a
+                new invite withdraws any previous pending invitation.
               </p>
 
-              <form
-                onSubmit={onCreateInvite}
-                className="flex flex-col sm:flex-row gap-3 items-end"
-              >
-                <div className="flex-1 w-full">
+              <form onSubmit={onCreateInvite} className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Input
-                    label="Freelancer email (optional)"
+                    label="Freelancer email (recommended for in-app notification)"
                     name="inviteEmail"
                     type="email"
                     value={inviteEmail}
@@ -265,15 +314,32 @@ export function ProjectDetailPage() {
                     placeholder="freelancer@studio.design"
                     disabled={inviteLoading}
                   />
+                  <Textarea
+                    label="Message (optional)"
+                    name="inviteMessage"
+                    rows={2}
+                    value={inviteMessage}
+                    onChange={(e) => setInviteMessage(e.target.value)}
+                    placeholder="We'd like to invite you to work on this project."
+                    disabled={inviteLoading}
+                  />
                 </div>
-                <Button type="submit" loading={inviteLoading} size="md">
-                  {pendingInvite ? 'Regenerate link' : 'Create invite'}
-                </Button>
+                <div className="flex justify-end">
+                  <Button type="submit" loading={inviteLoading} size="md">
+                    {pendingInvite ? 'Regenerate invite' : 'Send invitation'}
+                  </Button>
+                </div>
               </form>
 
               {inviteError ? (
                 <Alert tone="danger" role="alert">
                   {inviteError}
+                </Alert>
+              ) : null}
+
+              {inviteNotified ? (
+                <Alert tone="success" role="status">
+                  In-app invitation notification delivered to the registered freelancer.
                 </Alert>
               ) : null}
 
@@ -295,6 +361,19 @@ export function ProjectDetailPage() {
                     >
                       {copied ? 'Copied' : 'Copy'}
                     </Button>
+                    {pendingInvite ? (
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        loading={withdrawingId === pendingInvite.id}
+                        disabled={Boolean(withdrawingId)}
+                        leftIcon={<XCircle className="w-3.5 h-3.5" />}
+                        onClick={() => void onWithdrawInvite(pendingInvite.id)}
+                      >
+                        Withdraw
+                      </Button>
+                    ) : null}
                   </div>
                   {pendingInvite ? (
                     <p className="font-mono text-[11px] text-dark/50">
@@ -308,16 +387,30 @@ export function ProjectDetailPage() {
               ) : null}
 
               {isOwner && project.invitations && project.invitations.length > 0 ? (
-                <InvitationHistory invitations={project.invitations} />
+                <InvitationHistory
+                  invitations={project.invitations}
+                  withdrawingId={withdrawingId}
+                  onWithdraw={(id) => void onWithdrawInvite(id)}
+                />
               ) : null}
             </Panel>
           ) : null}
 
           {isOwner && project.freelancerId ? (
-            <Alert tone="success">
-              Freelancer assigned. Invitation controls are closed for this
-              project.
-            </Alert>
+            <Panel tone="surface" shadow="sm" className="space-y-4">
+              <Alert tone="success">
+                Freelancer assigned ({project.freelancer?.name ?? 'Assigned'}).
+                Next step: finalize and accept the project agreement before
+                work begins.
+              </Alert>
+              {project.invitations && project.invitations.length > 0 ? (
+                <InvitationHistory
+                  invitations={project.invitations}
+                  withdrawingId={withdrawingId}
+                  onWithdraw={(id) => void onWithdrawInvite(id)}
+                />
+              ) : null}
+            </Panel>
           ) : null}
         </>
       ) : null}
@@ -357,35 +450,48 @@ function ParticipantCard({
 
 function InvitationHistory({
   invitations,
+  withdrawingId,
+  onWithdraw,
 }: {
   invitations: ProjectInvitation[]
+  withdrawingId?: string | null
+  onWithdraw?: (id: string) => void
 }) {
   return (
     <div className="pt-3 border-t-2 border-dark/10 space-y-2">
       <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/50">
         Invitation history
       </p>
-      <ul className="space-y-1">
+      <ul className="space-y-1.5">
         {invitations.map((inv) => (
           <li
             key={inv.id}
-            className="font-mono text-[11px] text-dark/70 flex flex-wrap gap-x-3 gap-y-1"
+            className="font-mono text-[11px] text-dark/70 flex flex-wrap items-center justify-between gap-2 border border-dark/10 bg-white px-2.5 py-1.5"
           >
-            <Badge
-              tone={
-                inv.status === 'PENDING'
-                  ? 'warning'
-                  : inv.status === 'ACCEPTED'
-                    ? 'success'
-                    : 'neutral'
-              }
-            >
-              {inv.status}
-            </Badge>
-            <span>{inv.invitedEmail ?? 'Open link'}</span>
-            <span className="text-dark/40">
-              {formatDate(inv.createdAt)}
-            </span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <Badge tone={invitationTone(inv.status)}>
+                {invitationLabel(inv.status)}
+              </Badge>
+              <span>{inv.invitedEmail ?? 'Open link'}</span>
+              {inv.message ? (
+                <span className="italic text-dark/55">“{inv.message}”</span>
+              ) : null}
+              <span className="text-dark/40">
+                Created {formatDate(inv.createdAt)}
+              </span>
+            </div>
+            {inv.status === 'PENDING' && onWithdraw ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                loading={withdrawingId === inv.id}
+                disabled={Boolean(withdrawingId)}
+                onClick={() => onWithdraw(inv.id)}
+              >
+                Withdraw
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>

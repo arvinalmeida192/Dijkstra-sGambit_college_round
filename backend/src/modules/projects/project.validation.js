@@ -22,6 +22,10 @@ export const createInvitationSchema = z.object({
     if (value === undefined || value === null || value === '') return undefined
     return String(value).trim().toLowerCase()
   }, z.string().email('Enter a valid email address.').optional()),
+  message: z.preprocess((value) => {
+    if (value === undefined || value === null || value === '') return undefined
+    return String(value).trim()
+  }, z.string().max(1000, 'Invitation message is too long.').optional()),
 })
 
 export const listProjectsQuerySchema = z.object({

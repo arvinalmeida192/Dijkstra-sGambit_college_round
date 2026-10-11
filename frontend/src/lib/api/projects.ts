@@ -2,7 +2,12 @@ import { apiRequest } from './client'
 import type { UserRole } from '../roles'
 
 export type ProjectStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
-export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED'
+export type InvitationStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'REVOKED'
+  | 'EXPIRED'
 
 export type ProjectParticipant = {
   id: string
@@ -16,11 +21,16 @@ export type ProjectInvitation = {
   projectId: string
   token: string
   invitedEmail: string | null
+  invitedUserId?: string | null
+  message?: string | null
   invitedRole: UserRole
   status: InvitationStatus
   createdBy: string
   acceptedBy: string | null
   acceptedAt: string | null
+  rejectedBy?: string | null
+  rejectedAt?: string | null
+  revokedAt?: string | null
   expiresAt: string
   createdAt: string
 }
@@ -47,11 +57,19 @@ export type CreateProjectInput = {
 }
 
 export type InvitationPreview = {
+  id?: string
   token: string
   status: InvitationStatus
   invitedEmail: string | null
   invitedRole: UserRole
+  message?: string | null
+  createdAt?: string
   expiresAt: string
+  sender?: {
+    id: string
+    name: string
+    email: string
+  } | null
   project: {
     id: string
     title: string
@@ -97,17 +115,32 @@ export function getProject(token: string, projectId: string) {
 export function createInvitation(
   token: string,
   projectId: string,
-  input: { email?: string } = {},
+  input: { email?: string; message?: string } = {},
 ) {
   return apiRequest<{
     invitation: ProjectInvitation
     invitePath: string
+    notifiedFreelancer?: boolean
     note: string
   }>(`/api/v1/projects/${projectId}/invitations`, {
     ...auth(token),
     method: 'POST',
     body: input,
   })
+}
+
+export function withdrawInvitation(
+  token: string,
+  projectId: string,
+  invitationId: string,
+) {
+  return apiRequest<{ invitation: ProjectInvitation }>(
+    `/api/v1/projects/${projectId}/invitations/${invitationId}/withdraw`,
+    {
+      ...auth(token),
+      method: 'POST',
+    },
+  )
 }
 
 export function previewInvitation(inviteToken: string) {
@@ -120,6 +153,16 @@ export function previewInvitation(inviteToken: string) {
 export function acceptInvitation(token: string, inviteToken: string) {
   return apiRequest<{ project: Project }>(
     `/api/v1/invitations/${encodeURIComponent(inviteToken)}/accept`,
+    {
+      ...auth(token),
+      method: 'POST',
+    },
+  )
+}
+
+export function rejectInvitation(token: string, inviteToken: string) {
+  return apiRequest<{ invitation: ProjectInvitation }>(
+    `/api/v1/invitations/${encodeURIComponent(inviteToken)}/reject`,
     {
       ...auth(token),
       method: 'POST',
