@@ -112,7 +112,7 @@ export function HeroSection() {
                         System Architecture v1.0
                       </h3>
                       <span className="font-mono font-bold text-lg text-dark shrink-0">
-                        $4,500
+                        ₹4,500
                       </span>
                     </div>
                     <div className="mt-2 text-xs font-mono text-dark/60 flex items-center justify-between pt-2 border-t border-dark/10">
@@ -136,7 +136,7 @@ export function HeroSection() {
                         Interactive High-Fidelity UI
                       </h3>
                       <span className="font-mono font-bold text-lg text-accent shrink-0">
-                        $7,200
+                        ₹7,200
                       </span>
                     </div>
                     <p className="mt-3 font-mono text-[11px] text-dark/60">
@@ -157,7 +157,7 @@ export function HeroSection() {
                         Protocol Validation
                       </h3>
                       <span className="font-mono font-bold text-lg text-dark/70 shrink-0">
-                        $5,800
+                        ₹5,800
                       </span>
                     </div>
                     <div className="mt-2 text-xs font-mono text-dark/50 flex items-center justify-between pt-2 border-t border-dark/10">
@@ -172,7 +172,7 @@ export function HeroSection() {
                     <span className="text-dark/50 block text-[10px]">
                       TOTAL (SAMPLE)
                     </span>
-                    <span className="font-bold text-base text-dark">$17,500.00</span>
+                    <span className="font-bold text-base text-dark">₹17,500.00</span>
                   </div>
                   <div className="text-right">
                     <span className="text-dark/50 block text-[10px]">LABEL</span>
