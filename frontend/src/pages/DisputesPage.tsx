@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Alert } from '../components/ui/Alert'
@@ -41,7 +41,6 @@ import {
   RESOLUTION_TYPE_LABELS,
 } from '../lib/disputeStatus'
 import { routes } from '../lib/routes'
-import { DisputeAiPanel } from './disputes/DisputeAiPanel'
 
 const DECISION_OPTIONS: { value: DisputeDecision; label: string }[] = [
   {
@@ -137,12 +136,16 @@ export function DisputesPage() {
     return (id: string) => map.get(id) ?? id.slice(0, 8)
   }, [milestones])
 
+  const initialLoadDoneRef = useRef(false)
+
   const load = useCallback(async () => {
     if (!token || !projectId || !isApiConfigured()) {
       setLoading(false)
       return
     }
-    setLoading(true)
+    // Only show the full-page loader on the first fetch. Refresh must not
+    // unmount the open-dispute form (that would drop input focus).
+    if (!initialLoadDoneRef.current) setLoading(true)
     setError(null)
     try {
       const [projectResult, milestonesResult, disputesResult] =
@@ -168,6 +171,7 @@ export function DisputesPage() {
         return disputable?.id ?? milestonesResult.milestones[0]?.id ?? ''
       })
       setSelectedId((current) => current ?? disputesResult.disputes[0]?.id ?? null)
+      initialLoadDoneRef.current = true
     } catch (err) {
       setProject(null)
       setMilestones([])
@@ -445,8 +449,7 @@ export function DisputesPage() {
       <Alert tone="info">
         Dispute decisions are recorded by an authorized human reviewer. They do{' '}
         <strong>not</strong> move escrow funds. On-chain release or refund still
-        requires a verified transaction on the Payments page. Optional AI
-        evidence summaries below are advisory only and never decide the case.
+        requires a verified transaction on the Payments page.
       </Alert>
 
       {!isApiConfigured() ? (
@@ -722,17 +725,6 @@ export function DisputesPage() {
                           Claim for review
                         </Button>
                       ) : null}
-                    </Panel>
-
-                    <Panel className="space-y-3">
-                      <DisputeAiPanel
-                        token={token}
-                        disputeId={detail.id}
-                        canRequest={
-                          (isClient || isFreelancer || isArbitrator) &&
-                          detail.status !== 'RESOLVED'
-                        }
-                      />
                     </Panel>
 
                     <Panel className="space-y-3">

@@ -55,9 +55,8 @@ export function HeroSection() {
 
               <p className="font-body text-base md:text-xl text-dark/80 max-w-xl mb-10 leading-relaxed">
                 Fairwork helps clients and freelancers agree on milestones, track
-                deliverables, review advisory AI insights, resolve disputes with an
-                authorized reviewer, and see payment status — without replacing your
-                existing freelance platform.
+                deliverables, resolve disputes with an authorized reviewer, and see
+                payment status — without replacing your existing freelance platform.
               </p>
 
               <div className="flex flex-wrap items-center gap-4">

@@ -60,8 +60,8 @@ export function AuthLayout({ title, subtitle, children, aside }: AuthLayoutProps
                     </h2>
                     <p className="font-body text-sm text-white/90 leading-relaxed">
                       Fairwork protects freelance milestones with clear agreements,
-                      evidence trails, advisory AI reviews, and authorized dispute
-                      resolution — demo on testnet / local chain only.
+                      evidence trails, and authorized dispute resolution — demo on
+                      testnet / local chain only.
                     </p>
                   </div>
                   <div className="mt-8 font-mono text-[10px] text-white/70 flex items-center justify-between gap-4">

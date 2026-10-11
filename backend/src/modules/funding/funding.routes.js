@@ -26,6 +26,11 @@ projectFundingRouter.post(
   requireRoles('CLIENT'),
   fundingController.releaseMilestone,
 )
+projectFundingRouter.post(
+  '/milestones/:milestoneId/claim',
+  requireRoles('FREELANCER'),
+  fundingController.claimMilestone,
+)
 
 // Standalone funding router
 fundingRouter.use(authenticate(true))
@@ -34,5 +39,10 @@ fundingRouter.post(
   '/milestones/:milestoneId/release',
   requireRoles('CLIENT'),
   fundingController.releaseMilestone,
+)
+fundingRouter.post(
+  '/milestones/:milestoneId/claim',
+  requireRoles('FREELANCER'),
+  fundingController.claimMilestone,
 )
 

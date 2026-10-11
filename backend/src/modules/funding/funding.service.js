@@ -38,6 +38,13 @@ function assertClientOwner(project, user) {
   }
 }
 
+function assertFreelancerAssignee(project, user) {
+  assertParticipant(project, user)
+  if (project.freelancer_id !== user.id) {
+    throw forbidden('Only the assigned freelancer can claim milestone payouts.')
+  }
+}
+
 /**
  * Currency conversion helpers.
  * Fairwork amounts are stored in integer app cents (where 100 = 1.00 major units).
@@ -457,6 +464,142 @@ export async function verifyPayment(user, projectId, input) {
 }
 
 /**
+ * Shared ledger payout for client release or freelancer Razorpay claim.
+ * Requires funding, milestone APPROVED, held/failed funds, and no dispute.
+ */
+async function executeMilestonePayout({
+  actor,
+  project,
+  milestone,
+  milestoneId,
+  input = {},
+  trigger,
+}) {
+  const purpose =
+    trigger === 'freelancer_claim' ? 'freelancer_claim' : 'client_release'
+
+  return withTransaction(async (client) => {
+    const fund = await findMilestoneFundForUpdate(milestoneId, client)
+    if (!fund) {
+      throw notFound('No held fund record found for this milestone.')
+    }
+
+    if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
+      throw conflict(`Milestone funds are already ${fund.status.toLowerCase()}.`)
+    }
+
+    const payoutProvider = getPayoutProvider(env.payoutMode)
+    let payoutResult
+    try {
+      payoutResult = await payoutProvider.createPayout({
+        fundId: fund.id,
+        milestoneId,
+        amount: Number(fund.amount),
+        currency: 'INR',
+        purpose,
+        recipientId: project.freelancer_id || undefined,
+      })
+    } catch (err) {
+      const failedFund = await markMilestoneFundFailed(
+        {
+          milestoneFundId: fund.id,
+          failureReason: err.message || 'Payout provider failure',
+          metadata: {
+            error: err.message,
+            notes: input.notes ?? null,
+            trigger,
+            attemptedAt: new Date().toISOString(),
+          },
+        },
+        client,
+      )
+      return {
+        success: false,
+        milestoneFund: toPublicMilestoneFund(failedFund),
+        notice: `Payout failed: ${err.message}. State recorded as FAILED for retry.`,
+      }
+    }
+
+    const updatedFund = await releaseMilestoneFund(
+      {
+        milestoneFundId: fund.id,
+        releasedBy: actor.id,
+        payoutReference: payoutResult.reference,
+        metadata: {
+          ...payoutResult,
+          notes: input.notes ?? null,
+          trigger,
+        },
+      },
+      client,
+    )
+
+    await insertAuditLog(
+      {
+        actorId: actor.id,
+        projectId: project.id,
+        milestoneId,
+        action: 'MILESTONE_FUNDS_RELEASED',
+        metadata: {
+          fundId: fund.id,
+          payoutReference: payoutResult.reference,
+          amount: fund.amount,
+          trigger,
+        },
+      },
+      client,
+    )
+
+    const notifyUserId =
+      purpose === 'freelancer_claim'
+        ? project.client_id
+        : project.freelancer_id
+    if (notifyUserId) {
+      await insertNotificationIgnoreConflict(
+        {
+          userId: notifyUserId,
+          projectId: project.id,
+          milestoneId,
+          kind: 'MILESTONE_RELEASED',
+          subjectKey: fund.id,
+          title:
+            purpose === 'freelancer_claim'
+              ? 'Freelancer Claimed Milestone Payout'
+              : 'Milestone Funds Released',
+          body:
+            purpose === 'freelancer_claim'
+              ? `Freelancer claimed Razorpay sandbox payout for "${milestone.title}" (${payoutResult.reference}).`
+              : `Payment release for milestone "${milestone.title}" has been recorded (${payoutResult.label || 'Sandbox payout'}).`,
+        },
+        client,
+      )
+    }
+
+    const publicFund = toPublicMilestoneFund(updatedFund)
+    if (purpose === 'freelancer_claim') {
+      return {
+        success: true,
+        milestoneFund: publicFund,
+        notice: `Razorpay test payout ${payoutResult.reference} recorded. Milestone funds RELEASED.`,
+        razorpay: {
+          payoutId: payoutResult.reference,
+          provider: 'razorpay',
+          mode: 'test',
+          status: 'PROCESSED',
+          purpose: 'freelancer_claim',
+        },
+      }
+    }
+
+    return {
+      success: true,
+      milestoneFund: publicFund,
+      notice: 'Sandbox payout recorded. Ledger updated.',
+    }
+  })
+}
+
+/**
  * POST /milestones/:milestoneId/release: client-only.
  * Requires funding, milestone APPROVED, held funds, and no dispute.
  */
@@ -480,103 +623,53 @@ export async function releaseMilestone(user, milestoneId, input = {}) {
     throw conflict('Milestone must be APPROVED before payment release.')
   }
 
-  return withTransaction(async (client) => {
-    // Row lock on milestone funds
-    const fund = await findMilestoneFundForUpdate(milestoneId, client)
-    if (!fund) {
-      throw notFound('No held fund record found for this milestone.')
-    }
-
-    // Allow release if HELD, or retry if previously FAILED
-    if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
-      throw conflict(`Milestone funds are already ${fund.status.toLowerCase()}.`)
-    }
-
-    const payoutProvider = getPayoutProvider(env.payoutMode)
-    let payoutResult
-    try {
-      payoutResult = await payoutProvider.createPayout({
-        fundId: fund.id,
-        milestoneId,
-        amount: Number(fund.amount),
-        currency: 'INR',
-      })
-    } catch (err) {
-      // Record recoverable payout failure state
-      const failedFund = await markMilestoneFundFailed(
-        {
-          milestoneFundId: fund.id,
-          failureReason: err.message || 'Payout provider failure',
-          metadata: {
-            error: err.message,
-            notes: input.notes ?? null,
-            attemptedAt: new Date().toISOString(),
-          },
-        },
-        client,
-      )
-      return {
-        success: false,
-        milestoneFund: toPublicMilestoneFund(failedFund),
-        notice: `Payout failed: ${err.message}. State recorded as FAILED for retry.`,
-      }
-    }
-
-    const updatedFund = await releaseMilestoneFund(
-      {
-        milestoneFundId: fund.id,
-        releasedBy: user.id,
-        payoutReference: payoutResult.reference,
-        metadata: {
-          ...payoutResult,
-          notes: input.notes ?? null,
-        },
-      },
-      client,
-    )
-
-    await insertAuditLog(
-      {
-        actorId: user.id,
-        projectId: project.id,
-        milestoneId,
-        action: 'MILESTONE_FUNDS_RELEASED',
-        metadata: {
-          fundId: fund.id,
-          payoutReference: payoutResult.reference,
-          amount: fund.amount,
-        },
-      },
-      client,
-    )
-
-    if (project.freelancer_id) {
-      await insertNotificationIgnoreConflict(
-        {
-          userId: project.freelancer_id,
-          projectId: project.id,
-          milestoneId,
-          kind: 'MILESTONE_RELEASED',
-          subjectKey: fund.id,
-          title: 'Milestone Funds Released',
-          body: `Payment release for milestone "${milestone.title}" has been recorded (${payoutResult.label || 'Sandbox payout'}).`,
-        },
-        client,
-      )
-    }
-
-    return {
-      success: true,
-      milestoneFund: toPublicMilestoneFund(updatedFund),
-      notice: 'Sandbox payout recorded. Ledger updated.',
-    }
+  return executeMilestonePayout({
+    actor: user,
+    project,
+    milestone,
+    milestoneId,
+    input,
+    trigger: 'client_release',
   })
 }
 
 /**
- * System/automatic release triggered by review-window expiry.
- * Idempotent: checks for HELD funds, open disputes, and funding configuration.
- * Disputed, cancelled, or unfunded milestones are safely bypassed without error.
+ * POST /milestones/:milestoneId/claim: freelancer-only Razorpay sandbox claim.
+ * After client approval, freelancer pulls held escrow into RELEASED via payout provider.
+ */
+export async function claimMilestone(user, milestoneId, input = {}) {
+  if (!env.gatewayPaymentsEnabled) {
+    throw conflict('Gateway payments feature is disabled.')
+  }
+
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone) throw notFound('Milestone not found.')
+
+  const project = await findProjectById(milestone.project_id)
+  assertFreelancerAssignee(project, user)
+
+  const openDispute = await findOpenDisputeForMilestone(milestoneId)
+  if (openDispute || milestone.status === 'DISPUTED') {
+    throw conflict('Disputed milestones remain held and cannot be claimed.')
+  }
+
+  if (milestone.status !== 'APPROVED') {
+    throw conflict('Milestone must be APPROVED before you can claim payout.')
+  }
+
+  return executeMilestonePayout({
+    actor: user,
+    project,
+    milestone,
+    milestoneId,
+    input,
+    trigger: 'freelancer_claim',
+  })
+}
+
+/**
+ * After review-window auto-approve: leave funds HELD for freelancer claim.
+ * Idempotent; does not move money.
  */
 export async function tryAutoReleaseMilestoneFund(milestoneId) {
   if (!env.gatewayPaymentsEnabled) {
@@ -598,94 +691,32 @@ export async function tryAutoReleaseMilestoneFund(milestoneId) {
     return { released: false, reason: 'project_cancelled' }
   }
 
-  return withTransaction(async (client) => {
-    const fund = await findMilestoneFundForUpdate(milestoneId, client)
-    if (!fund) {
-      return { released: false, reason: 'not_funded' }
-    }
+  const fund = await findMilestoneFundByMilestoneId(milestoneId)
+  if (!fund) {
+    return { released: false, reason: 'not_funded' }
+  }
 
-    if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
-      return { released: false, reason: `already_${fund.status.toLowerCase()}` }
-    }
+  if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
+    return { released: false, reason: `already_${fund.status.toLowerCase()}` }
+  }
 
-    const payoutProvider = getPayoutProvider(env.payoutMode)
-    let payoutResult
-    try {
-      payoutResult = await payoutProvider.createPayout({
-        fundId: fund.id,
-        milestoneId,
-        amount: Number(fund.amount),
-        currency: 'INR',
-      })
-    } catch (err) {
-      const failedFund = await markMilestoneFundFailed(
-        {
-          milestoneFundId: fund.id,
-          failureReason: err.message || 'Auto-payout provider failure',
-          metadata: {
-            error: err.message,
-            trigger: 'auto_approval_expiry',
-            attemptedAt: new Date().toISOString(),
-          },
-        },
-        client,
-      )
-      return {
-        released: false,
-        reason: 'payout_failed',
-        milestoneFund: toPublicMilestoneFund(failedFund),
-      }
-    }
+  if (project.freelancer_id) {
+    await insertNotificationIgnoreConflict({
+      userId: project.freelancer_id,
+      projectId: project.id,
+      milestoneId,
+      kind: 'AUTO_APPROVED',
+      subjectKey: `${fund.id}:claim-ready`,
+      title: 'Milestone Ready to Claim',
+      body: `Milestone "${milestone.title}" is approved. Claim your Razorpay sandbox payout from Funding / Payments.`,
+    })
+  }
 
-    const updatedFund = await releaseMilestoneFund(
-      {
-        milestoneFundId: fund.id,
-        releasedBy: project.client_id,
-        payoutReference: payoutResult.reference,
-        metadata: {
-          ...payoutResult,
-          trigger: 'auto_approval_expiry',
-        },
-      },
-      client,
-    )
-
-    await insertAuditLog(
-      {
-        actorId: null,
-        projectId: project.id,
-        milestoneId,
-        action: 'MILESTONE_FUNDS_RELEASED',
-        metadata: {
-          fundId: fund.id,
-          payoutReference: payoutResult.reference,
-          amount: fund.amount,
-          trigger: 'auto_approval_expiry',
-        },
-      },
-      client,
-    )
-
-    if (project.freelancer_id) {
-      await insertNotificationIgnoreConflict(
-        {
-          userId: project.freelancer_id,
-          projectId: project.id,
-          milestoneId,
-          kind: 'MILESTONE_RELEASED',
-          subjectKey: fund.id,
-          title: 'Milestone Funds Released (Auto)',
-          body: `Payment release for auto-approved milestone "${milestone.title}" has been recorded (${payoutResult.label || 'Sandbox payout'}).`,
-        },
-        client,
-      )
-    }
-
-    return {
-      released: true,
-      milestoneFund: toPublicMilestoneFund(updatedFund),
-    }
-  })
+  return {
+    released: false,
+    reason: 'awaiting_freelancer_claim',
+    milestoneFund: toPublicMilestoneFund(fund),
+  }
 }
 
 /**

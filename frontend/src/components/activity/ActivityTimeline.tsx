@@ -1,6 +1,5 @@
 import { useId, useState, type ReactNode } from 'react'
 import {
-  Bot,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
@@ -75,8 +74,6 @@ function categoryIcon(category?: string): ReactNode {
       return <Gavel className={className} aria-hidden />
     case 'protection':
       return <Shield className={className} aria-hidden />
-    case 'ai':
-      return <Bot className={className} aria-hidden />
     default:
       return <Activity className={className} aria-hidden />
   }

@@ -15,16 +15,11 @@ const steps = [
   },
   {
     n: '03',
-    title: 'AI advisory summary',
-    body: 'Optional AI highlights claims, support, contradictions, and gaps — never the final decision.',
-  },
-  {
-    n: '04',
     title: 'Authorized review',
     body: 'A defined arbitrator/reviewer evaluates the case file and records a decision.',
   },
   {
-    n: '05',
+    n: '04',
     title: 'Resolution path',
     body: 'Release, refund, or authorized split executes only through permitted workflows.',
   },
@@ -39,19 +34,19 @@ export function DisputeSection() {
           title="Evidence In. Decision Out."
           meta={
             <span className="font-mono text-xs text-dark/60">
-              AUTHORIZED REVIEWER · AI ADVISORY ONLY
+              AUTHORIZED REVIEWER · STRUCTURED EVIDENCE
             </span>
           }
           className="mb-12 pb-6 border-b-2 border-dark"
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {steps.map((step, i) => (
             <article
               key={step.n}
               className={cn(
                 'bg-base border-2 border-dark p-6 shadow-[var(--shadow-brutal)] flex flex-col min-h-[220px]',
-                i === 3 && 'border-accent',
+                i === 2 && 'border-accent',
               )}
             >
               <span className="font-mono text-3xl font-black text-accent mb-4">

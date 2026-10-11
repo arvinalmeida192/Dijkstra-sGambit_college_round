@@ -4,8 +4,6 @@ import {
   notFound,
 } from '../../utils/errors.js'
 import { withTransaction } from '../../db/pool.js'
-import { env } from '../../config/env.js'
-import { releaseMilestone } from '../funding/funding.service.js'
 import { findAgreementById } from '../agreements/agreement.repository.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
@@ -462,18 +460,7 @@ export async function reviewSubmission(user, submissionId, input) {
     return { review, updatedMilestone }
   })
 
-  // If milestone is APPROVED and gateway payments are enabled, trigger payout workflow automatically
-  if (input.decision === 'APPROVED' && env.gatewayPaymentsEnabled) {
-    try {
-      await releaseMilestone(user, milestone.id, {
-        notes: 'Automated release upon milestone approval',
-      })
-    } catch {
-      // If release encounters an expected condition (e.g. not funded on old agreements, or recoverable failure),
-      // the failure/state is cleanly recorded without breaking the approval HTTP response.
-    }
-  }
-
+  // Payout is freelancer-claimed after approval (Razorpay sandbox claim endpoint).
   return {
     review: toPublicReview(result.review),
     submission: toPublicSubmission(submission),

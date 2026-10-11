@@ -26,7 +26,7 @@ const features = [
   {
     title: 'Dispute Resolution',
     tag: 'Structured evidence',
-    body: 'Either party can open a dispute, submit evidence, and view claims. An authorized reviewer records the decision. AI summaries are advisory only.',
+    body: 'Either party can open a dispute, submit evidence, and view claims. An authorized reviewer records the decision.',
     detail: 'Disputed funds blocked from ordinary release',
   },
   {

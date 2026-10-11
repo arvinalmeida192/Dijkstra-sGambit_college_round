@@ -271,16 +271,39 @@ describe('funding module', () => {
     expect(reviewRes.status).toBe(200)
     expect(reviewRes.body.milestone.status).toBe('APPROVED')
 
-    // 10. Check that milestone 1 payout was automatically triggered upon approval
+    // 10. Approval leaves funds HELD for freelancer Razorpay claim
     const statusAfterApproval = await request(app)
       .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
     expect(statusAfterApproval.status).toBe(200)
-    const fund1 = statusAfterApproval.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
-    expect(fund1.status).toBe('RELEASED')
-    expect(fund1.payoutReference).toMatch(/^SIM-PAYOUT-/)
+    const fund1Held = statusAfterApproval.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
+    expect(fund1Held.status).toBe('HELD')
 
-    // 11. Duplicate release is rejected idempotently
+    // 11. Freelancer claims payout via Razorpay sandbox claim
+    const claimRes = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/claim`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({})
+    expect(claimRes.status).toBe(200)
+    expect(claimRes.body.success).toBe(true)
+    expect(claimRes.body.milestoneFund.status).toBe('RELEASED')
+    expect(claimRes.body.milestoneFund.payoutReference).toMatch(/^pout_/)
+    expect(claimRes.body.razorpay).toMatchObject({
+      payoutId: claimRes.body.milestoneFund.payoutReference,
+      provider: 'razorpay',
+      mode: 'test',
+      status: 'PROCESSED',
+      purpose: 'freelancer_claim',
+    })
+
+    // 12. Duplicate claim is rejected idempotently
+    const dupClaim = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/claim`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({})
+    expect(dupClaim.status).toBe(409)
+
+    // 13. Client release also rejected once claimed
     const dupRelease = await request(app)
       .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
@@ -421,29 +444,33 @@ describe('funding module', () => {
       .field('notes', 'Deliverable')
       .attach('file', Buffer.from('test'), 'test.txt')
 
-    // Approve - triggers release which fails cleanly and records FAILED status
+    // Approve — funds stay HELD until claim/release (no auto-payout)
     await request(app)
       .post(`/api/v1/submissions/${subRes.body.submission.id}/review`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
       .send({ decision: 'APPROVED' })
 
-    // Status is FAILED and retriable
-    const statusBeforeRetry = await request(app)
-      .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
-      .set('Authorization', `Bearer ${ctx.client.token}`)
-    const fundBefore = statusBeforeRetry.body.milestoneFunds.find((f) => f.milestoneId === milestone1.id)
-    expect(fundBefore.status).toBe('FAILED')
-    expect(fundBefore.failureReason).toMatch(/timeout/i)
+    // Freelancer claim with failing provider → FAILED and retriable
+    const failClaim = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/claim`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({})
+    expect(failClaim.status).toBe(200)
+    expect(failClaim.body.success).toBe(false)
+    expect(failClaim.body.milestoneFund.status).toBe('FAILED')
+    expect(failClaim.body.milestoneFund.failureReason).toMatch(/timeout/i)
 
-    // Switch back to simulated mode for retry
+    // Switch back to simulated mode for retry claim
     env.payoutMode = 'simulated'
 
     const retryRes = await request(app)
-      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/release`)
-      .set('Authorization', `Bearer ${ctx.client.token}`)
-      .send({ notes: 'Retry release' })
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone1.id}/claim`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({ notes: 'Retry claim' })
     expect(retryRes.status).toBe(200)
+    expect(retryRes.body.success).toBe(true)
     expect(retryRes.body.milestoneFund.status).toBe('RELEASED')
+    expect(retryRes.body.milestoneFund.payoutReference).toMatch(/^pout_/)
 
     env.gatewayPaymentsEnabled = false
     env.payoutMode = origPayoutMode
@@ -501,7 +528,14 @@ describe('funding module', () => {
       .send({ decision: 'APPROVED' })
     expect(rev2.status).toBe(200)
 
-    // Milestone 2 was released independently
+    // Freelancer claims undisputed milestone 2 independently
+    const claim2 = await request(app)
+      .post(`/api/v1/projects/${ctx.projectId}/funding/milestones/${milestone2.id}/claim`)
+      .set('Authorization', `Bearer ${ctx.freelancer.token}`)
+      .send({})
+    expect(claim2.status).toBe(200)
+    expect(claim2.body.milestoneFund.status).toBe('RELEASED')
+
     const statusRes = await request(app)
       .get(`/api/v1/projects/${ctx.projectId}/funding/status`)
       .set('Authorization', `Bearer ${ctx.client.token}`)
@@ -509,7 +543,7 @@ describe('funding module', () => {
     const fund2 = statusRes.body.milestoneFunds.find((f) => f.milestoneId === milestone2.id)
 
     expect(fund1.status).toBe('HELD') // Disputed milestone remains held
-    expect(fund2.status).toBe('RELEASED') // Undisputed milestone proceeded
+    expect(fund2.status).toBe('RELEASED') // Undisputed milestone claimed
 
     env.gatewayPaymentsEnabled = false
   })

@@ -21,12 +21,17 @@ export function Modal({
 }: ModalProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
+  // Only run when `open` flips — do not depend on `onClose` identity.
+  // Inline onClose lambdas change every parent render and would re-focus the
+  // dialog panel, stealing focus from inputs after each keystroke.
   useEffect(() => {
     if (!open) return
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
     }
 
     document.addEventListener('keydown', onKeyDown)
@@ -38,7 +43,7 @@ export function Modal({
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
@@ -47,7 +52,7 @@ export function Modal({
       className="fixed inset-0 z-[9000] bg-dark/80 backdrop-blur-md flex items-center justify-center p-4"
       role="presentation"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) onCloseRef.current()
       }}
     >
       <div
