@@ -31,6 +31,12 @@ export const releaseMilestoneSchema = z
   })
   .strict()
 
+export const claimMilestoneSchema = z
+  .object({
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict()
+
 export function parseBody(schema, body) {
   const result = schema.safeParse(body ?? {})
   if (!result.success) {

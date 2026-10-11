@@ -28,9 +28,6 @@ const CATEGORY_BY_ACTION = {
   DISPUTE_EVIDENCE_ADDED: 'dispute',
   DISPUTE_RESOLUTION_PROPOSED: 'dispute',
   DISPUTE_RESOLVED: 'dispute',
-  AI_ASSESSMENT_CREATED: 'ai',
-  AI_ASSESSMENT_FAILED: 'ai',
-  AI_DISPUTE_SUMMARY_CREATED: 'ai',
 }
 
 function milestoneLabel(milestoneTitle) {
@@ -107,12 +104,6 @@ export function summarizeAuditAction(action, metadata = {}, context = {}) {
       return 'Dispute resolution proposed'
     case 'DISPUTE_RESOLVED':
       return 'Dispute resolved'
-    case 'AI_ASSESSMENT_CREATED':
-      return 'AI assessment available'
-    case 'AI_ASSESSMENT_FAILED':
-      return 'AI assessment failed'
-    case 'AI_DISPUTE_SUMMARY_CREATED':
-      return 'AI dispute summary available'
     default: {
       const readable = String(action || 'Activity')
         .toLowerCase()

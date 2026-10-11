@@ -94,6 +94,13 @@ export type ReleaseMilestonePaymentResponse = {
     releasedAt: string | null
   }
   notice: string
+  razorpay?: {
+    payoutId: string
+    provider: string
+    mode: string
+    status: string
+    purpose: string
+  }
 }
 
 export function getFundingStatus(token: string, projectId: string) {
@@ -148,6 +155,22 @@ export function releaseMilestonePayment(
 ) {
   return apiRequest<ReleaseMilestonePaymentResponse>(
     `/api/v1/projects/${projectId}/funding/milestones/${milestoneId}/release`,
+    {
+      token,
+      method: 'POST',
+      body: notes ? { notes } : {},
+    },
+  )
+}
+
+export function claimMilestonePayment(
+  token: string,
+  projectId: string,
+  milestoneId: string,
+  notes?: string,
+) {
+  return apiRequest<ReleaseMilestonePaymentResponse>(
+    `/api/v1/projects/${projectId}/funding/milestones/${milestoneId}/claim`,
     {
       token,
       method: 'POST',

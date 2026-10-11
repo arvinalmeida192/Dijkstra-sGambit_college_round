@@ -23,7 +23,7 @@ const problems = [
     tone: 'text-accent',
     label: 'Vulnerability: Process',
     title: 'Disputes stall when evidence is scattered and decisions are opaque.',
-    body: 'Screenshots in chat threads do not make a case file. Fairwork structures claims, evidence, advisory AI summaries, and authorized reviewer decisions in one place.',
+    body: 'Screenshots in chat threads do not make a case file. Fairwork structures claims, evidence, and authorized reviewer decisions in one place.',
     tag: 'Opaque dispute risk',
   },
 ] as const

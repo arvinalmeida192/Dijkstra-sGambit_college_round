@@ -29,7 +29,6 @@ import {
   canReviewSubmission,
   canSubmitDeliverable,
 } from '../../lib/submissionStatus'
-import { AiAssessmentPanel } from './AiAssessmentPanel'
 import { ReviewPanel } from './ReviewPanel'
 import { SubmissionForm } from './SubmissionForm'
 import { SubmissionHistory } from './SubmissionHistory'
@@ -44,7 +43,6 @@ type MilestoneCardProps = {
   currentUserId: string | undefined
   projectClosed: boolean
   busy: boolean
-  token: string | null
   onTransition: (toStatus: MilestoneStatus) => void
   onEdit: () => void
   onDelete: () => void
@@ -121,7 +119,6 @@ export function MilestoneCard({
   currentUserId,
   projectClosed,
   busy,
-  token,
   onTransition,
   onEdit,
   onDelete,
@@ -366,11 +363,6 @@ export function MilestoneCard({
           busy={busy}
           onDownload={onDownload}
         />
-        <AiAssessmentPanel
-          token={token}
-          submissionId={latest?.id ?? null}
-          canRequest={(isClient || isFreelancer) && !projectClosed}
-        />
       </div>
 
       {canSubmit ? (
@@ -456,11 +448,13 @@ export function MilestoneCard({
       ) : milestone.status === 'APPROVED' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t-2 border-dark/10">
           <p className="font-mono text-[11px] text-dark/70">
-            Milestone approved. Funds can be released to the freelancer.
+            {isFreelancer
+              ? 'Milestone approved. Claim your payout via Razorpay from Funding.'
+              : 'Milestone approved. Freelancer can claim via Razorpay from Funding / Payments.'}
           </p>
           <Link to={routes.fund(milestone.projectId)}>
             <Button size="sm" variant="primary">
-              View Escrow / Release Funds →
+              {isFreelancer ? 'Claim via Razorpay →' : 'View Escrow →'}
             </Button>
           </Link>
         </div>

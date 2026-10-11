@@ -19,7 +19,7 @@ async function main() {
     console.log(`Submissions: /api/v1/milestones/:id/submissions | /api/v1/submissions/:id`)
     console.log(`Payments: /api/v1/projects/:id/payments | /api/v1/milestones/:id/payments | /api/v1/payments/:id/sync`)
     console.log(`Disputes: /api/v1/projects/:id/disputes | /api/v1/milestones/:id/disputes | /api/v1/disputes/:id`)
-    console.log(`AI: /api/v1/submissions/:id/assessments | /api/v1/disputes/:id/assessments | /api/v1/ai/benchmark`)
+    console.log(`Funding: /api/v1/projects/:id/funding | claim/release milestones`)
     console.log(`Notifications: /api/v1/notifications | POST /run-jobs`)
   })
 }

@@ -19,7 +19,10 @@ export const env = {
   ),
   jwtSecret: required('JWT_SECRET', 'dev-only-change-me-fairwork-secret'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '7d',
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   isTest: process.env.NODE_ENV === 'test',
   /** Absolute or relative path for private deliverable/evidence files. */
   storagePrivateDir: process.env.STORAGE_PRIVATE_DIR ?? '',
@@ -36,21 +39,7 @@ export const env = {
   /** ERC-20 decimals for amount mapping (app cents → token base). */
   tokenDecimals: Number(process.env.TOKEN_DECIMALS ?? 6),
 
-  /** Phase 19 — Ollama AI (local only; no weight downloads from app code). */
-  aiEnabled: (process.env.AI_ENABLED ?? 'true').toLowerCase() !== 'false',
-  ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434',
-  ollamaTimeoutMs: Number(process.env.OLLAMA_TIMEOUT_MS ?? 60_000),
-  aiModelCode: process.env.AI_MODEL_CODE ?? 'qwen2.5-coder:1.5b',
-  aiModelText: process.env.AI_MODEL_TEXT ?? 'qwen3:1.7b,gemma3:1b',
-  aiModelVisual: process.env.AI_MODEL_VISUAL ?? 'qwen2.5vl:3b,gemma3:4b',
-  aiCompareOnLowConfidence:
-    (process.env.AI_COMPARE_ON_LOW_CONFIDENCE ?? 'true').toLowerCase() !==
-    'false',
-  aiLowConfidenceThreshold: Number(
-    process.env.AI_LOW_CONFIDENCE_THRESHOLD ?? 0.55,
-  ),
-
-  /** Deterministic notification job (independent of AI). */
+  /** Deterministic notification job. */
   notificationJobEnabled:
     (process.env.NOTIFICATION_JOB_ENABLED ?? 'true').toLowerCase() !== 'false',
   notificationJobIntervalMs: Number(

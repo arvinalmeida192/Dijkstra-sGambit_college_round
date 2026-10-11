@@ -2,6 +2,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js'
 import * as fundingService from './funding.service.js'
 import {
   assertUuid,
+  claimMilestoneSchema,
   createOrderSchema,
   parseBody,
   releaseMilestoneSchema,
@@ -32,6 +33,13 @@ export const releaseMilestone = asyncHandler(async (req, res) => {
   const milestoneId = assertUuid(req.params.milestoneId, 'milestone id')
   const body = parseBody(releaseMilestoneSchema, req.body)
   const result = await fundingService.releaseMilestone(req.user, milestoneId, body)
+  res.json(result)
+})
+
+export const claimMilestone = asyncHandler(async (req, res) => {
+  const milestoneId = assertUuid(req.params.milestoneId, 'milestone id')
+  const body = parseBody(claimMilestoneSchema, req.body)
+  const result = await fundingService.claimMilestone(req.user, milestoneId, body)
   res.json(result)
 })
 

@@ -10,6 +10,7 @@ import { PageContainer } from '../components/ui/PageContainer'
 import { Panel } from '../components/ui/Panel'
 import { SectionHeader } from '../components/ui/SectionHeader'
 import { Modal } from '../components/ui/Modal'
+import { RazorpayClaimSheet } from '../components/funding/RazorpayClaimSheet'
 import { ApiError, isApiConfigured } from '../lib/api/client'
 import { getProject, type Project } from '../lib/api/projects'
 import {
@@ -17,6 +18,7 @@ import {
   createFundingOrder,
   verifyFundingPayment,
   releaseMilestonePayment,
+  claimMilestonePayment,
   type FundingStatusResponse,
 } from '../lib/api/funding'
 import { routes } from '../lib/routes'
@@ -53,13 +55,14 @@ export function FundingPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
 
-  // Release modal state
-  const [releaseTarget, setReleaseTarget] = useState<{
+  // Release / claim modal state
+  const [payoutTarget, setPayoutTarget] = useState<{
     milestoneId: string
     title: string
     amount: number
+    mode: 'release' | 'claim'
   } | null>(null)
-  const [releasing, setReleasing] = useState(false)
+  const [payoutBusy, setPayoutBusy] = useState(false)
 
   const isClient = Boolean(user && project && user.id === project.client?.id)
   const isFreelancer = Boolean(user && project && user.id === project.freelancer?.id)
@@ -155,20 +158,74 @@ export function FundingPage() {
   }
 
   async function handleConfirmRelease() {
-    if (!token || !projectId || !releaseTarget) return
+    if (!token || !projectId || !payoutTarget || payoutTarget.mode !== 'release') return
     setActionError(null)
     setActionSuccess(null)
-    setReleasing(true)
+    setPayoutBusy(true)
 
     try {
-      const res = await releaseMilestonePayment(token, projectId, releaseTarget.milestoneId)
-      setActionSuccess(res.notice || 'Milestone funds released successfully.')
-      setReleaseTarget(null)
+      const res = await releaseMilestonePayment(
+        token,
+        projectId,
+        payoutTarget.milestoneId,
+      )
+      if (res.success) {
+        setActionSuccess(
+          res.notice || 'Milestone funds released successfully.',
+        )
+      } else {
+        setActionError(res.notice || 'Payout failed. State recorded as FAILED for retry.')
+      }
+      setPayoutTarget(null)
       await loadData()
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Release failed.')
     } finally {
-      setReleasing(false)
+      setPayoutBusy(false)
+    }
+  }
+
+  async function handleRazorpayClaim(details: {
+    upiId: string
+    accountHolder: string
+  }) {
+    if (!token || !projectId || !payoutTarget || payoutTarget.mode !== 'claim') {
+      return null
+    }
+    setActionError(null)
+    setActionSuccess(null)
+    setPayoutBusy(true)
+
+    try {
+      // Touch Razorpay checkout.js so the claim path shares the same SDK load as funding.
+      await loadRazorpayScript()
+      const res = await claimMilestonePayment(
+        token,
+        projectId,
+        payoutTarget.milestoneId,
+        `Razorpay UPI claim · ${details.accountHolder} · ${details.upiId}`,
+      )
+      if (res.success) {
+        const pout = res.milestoneFund?.payoutReference
+        setActionSuccess(
+          pout
+            ? `Razorpay payout ${pout} recorded. Funds RELEASED.`
+            : res.notice || 'Payout claimed successfully via Razorpay.',
+        )
+        await loadData()
+        if (!pout) {
+          setPayoutTarget(null)
+          return null
+        }
+        return { payoutReference: pout }
+      }
+      setActionError(res.notice || 'Razorpay claim failed. State recorded as FAILED for retry.')
+      return null
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Razorpay claim failed.')
+      return null
+    } finally {
+      setPayoutBusy(false)
     }
   }
 
@@ -224,8 +281,8 @@ export function FundingPage() {
       {enabled && (
         <Alert tone="warning">
           <strong>Sandbox Test Mode:</strong> Uses Razorpay test credentials (UPI / NetBanking / Cards).
-          Milestone payouts use <strong>Simulated Payouts</strong> (<code>SIM-PAYOUT-&lt;id&gt;</code>) for safe demonstration.
-          No real money is transferred to the freelancer.
+          After approval, the freelancer <strong>Claims</strong> payout via Razorpay (
+          test payout id <code>pout_…</code>). No real bank transfer occurs.
         </Alert>
       )}
 
@@ -399,7 +456,10 @@ export function FundingPage() {
               const isHeld = fund.status === 'HELD'
               const isFailed = fund.status === 'FAILED'
               const isReleased = fund.status === 'RELEASED'
-              const canRelease = isClient && (isHeld || isFailed) && isApproved && !isDisputed
+              const canClaim =
+                isFreelancer && (isHeld || isFailed) && isApproved && !isDisputed
+              const canRelease =
+                isClient && (isHeld || isFailed) && isApproved && !isDisputed
 
               return (
                 <Panel key={fund.id} tone="surface" shadow="sm" className="space-y-3">
@@ -449,7 +509,7 @@ export function FundingPage() {
                         <div>
                           <span className="font-bold text-dark">Payout Reference:</span>{' '}
                           <code className="bg-dark/5 px-1 py-0.5 rounded text-[11px]">{fund.payoutReference}</code>
-                          <span className="text-[10px] text-accent ml-1">(Sandbox payout)</span>
+                          <span className="text-[10px] text-accent ml-1">(Sandbox)</span>
                         </div>
                       )}
                       {fund.releasedAt && (
@@ -470,17 +530,33 @@ export function FundingPage() {
                       )}
                     </div>
 
-                    {/* Action buttons */}
-                    <div>
-                      {canRelease && (
+                    <div className="flex flex-wrap gap-2">
+                      {canClaim && (
                         <Button
                           size="sm"
                           variant="primary"
                           onClick={() =>
-                            setReleaseTarget({
+                            setPayoutTarget({
                               milestoneId: fund.milestoneId,
                               title: fund.milestoneTitle || `Milestone #${idx + 1}`,
                               amount: fund.amount,
+                              mode: 'claim',
+                            })
+                          }
+                        >
+                          {isFailed ? 'Retry Razorpay Claim →' : 'Claim via Razorpay →'}
+                        </Button>
+                      )}
+                      {canRelease && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() =>
+                            setPayoutTarget({
+                              milestoneId: fund.milestoneId,
+                              title: fund.milestoneTitle || `Milestone #${idx + 1}`,
+                              amount: fund.amount,
+                              mode: 'release',
                             })
                           }
                         >
@@ -501,44 +577,65 @@ export function FundingPage() {
         )}
       </div>
 
-      {/* Confirmation Modal for Releasing Funds */}
-      {releaseTarget && (
+      <RazorpayClaimSheet
+        open={Boolean(payoutTarget && payoutTarget.mode === 'claim')}
+        target={
+          payoutTarget && payoutTarget.mode === 'claim'
+            ? {
+                milestoneId: payoutTarget.milestoneId,
+                title: payoutTarget.title,
+                amount: payoutTarget.amount,
+              }
+            : null
+        }
+        keyId={fundingStatus?.keyId}
+        busy={payoutBusy}
+        error={
+          payoutTarget?.mode === 'claim' && actionError ? actionError : null
+        }
+        onClose={() => {
+          if (!payoutBusy) setPayoutTarget(null)
+        }}
+        onConfirm={(details) => handleRazorpayClaim(details)}
+      />
+
+      {payoutTarget && payoutTarget.mode === 'release' ? (
         <Modal
           open={true}
           title="Confirm Milestone Payment Release"
-          onClose={() => !releasing && setReleaseTarget(null)}
+          onClose={() => !payoutBusy && setPayoutTarget(null)}
         >
           <div className="space-y-4 font-body">
             <p className="text-sm text-dark/80">
-              Are you sure you want to release <strong>₹{(releaseTarget.amount / 100).toFixed(2)}</strong> for{' '}
-              <strong>"{releaseTarget.title}"</strong>?
+              Release <strong>₹{(payoutTarget.amount / 100).toFixed(2)}</strong> for{' '}
+              <strong>"{payoutTarget.title}"</strong>?
             </p>
             <Alert tone="info">
-              In sandbox mode, this generates a simulated payout reference (
-              <code>SIM-PAYOUT-&lt;fundId&gt;</code>) and marks the ledger as <strong>RELEASED</strong>.
+              Sandbox release records <code>SIM-PAYOUT-&lt;fundId&gt;</code> and marks funds{' '}
+              <strong>RELEASED</strong>.
             </Alert>
 
             <div className="flex justify-end gap-2 pt-2">
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={releasing}
-                onClick={() => setReleaseTarget(null)}
+                disabled={payoutBusy}
+                onClick={() => setPayoutTarget(null)}
               >
                 Cancel
               </Button>
               <Button
                 size="sm"
                 variant="primary"
-                disabled={releasing}
-                onClick={handleConfirmRelease}
+                disabled={payoutBusy}
+                onClick={() => void handleConfirmRelease()}
               >
-                {releasing ? 'Releasing...' : 'Confirm Release'}
+                {payoutBusy ? 'Releasing...' : 'Confirm Release'}
               </Button>
             </div>
           </div>
         </Modal>
-      )}
+      ) : null}
     </PageContainer>
   )
 }
