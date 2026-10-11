@@ -10,6 +10,7 @@ import {
 } from './notification.repository.js'
 import { applyStatusPatch } from '../milestones/milestone.repository.js'
 import { trySystemAutoRelease } from '../milestones/milestone.protection.js'
+import { tryAutoReleaseMilestoneFund } from '../funding/funding.service.js'
 import {
   insertAuditLog,
   listSubmissionsForMilestone,
@@ -235,6 +236,9 @@ export async function runNotificationJobs({
           },
         })
       }
+
+      // Gateway funding auto-release (simulated payout). Idempotent & safe.
+      await tryAutoReleaseMilestoneFund(row.id).catch(() => null)
 
       const subjectKey = `review:auto_approved:${row.id}`
       for (const userId of recipientIds(row)) {

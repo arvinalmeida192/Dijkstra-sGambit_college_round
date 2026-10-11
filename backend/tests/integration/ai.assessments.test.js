@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { createApp } from '../../src/app.js'
 import { pool } from '../../src/db/pool.js'
+import { env } from '../../src/config/env.js'
 import { setDefaultAdapter } from '../../src/modules/ai/ai.adapter.js'
 
 const app = createApp()
@@ -131,6 +132,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await resetDb()
+  env.aiEnabled = true
   setDefaultAdapter(mockAdapter())
 })
 

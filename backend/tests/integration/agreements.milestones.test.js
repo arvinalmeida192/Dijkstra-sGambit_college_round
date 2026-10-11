@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import { createApp } from '../../src/app.js'
+import { env } from '../../src/config/env.js'
 import { pool } from '../../src/db/pool.js'
 
 const app = createApp()
@@ -432,6 +433,15 @@ describe('Agreements & Milestone Workflow Integration', () => {
       .get(`/api/v1/projects/${projectId}/milestones`)
       .set('Authorization', `Bearer ${client.token}`)
     const m1 = milestonesRes.body.milestones[0]
+
+    // If gateway payments enabled, fund agreement first so work can start
+    if (env.gatewayPaymentsEnabled) {
+      await pool.query(
+        `INSERT INTO project_funding (project_id, agreement_id, client_id, amount, status)
+         VALUES ($1, $2, $3, $4, 'PAID')`,
+        [projectId, agreementId, client.user.id, 50000],
+      )
+    }
 
     // Transition milestone to IN_PROGRESS
     const startRes = await request(app)
