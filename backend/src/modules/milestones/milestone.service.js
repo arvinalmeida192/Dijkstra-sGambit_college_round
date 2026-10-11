@@ -318,14 +318,17 @@ export async function changeMilestoneStatus(user, milestoneId, input) {
     context: { hasFreelancer: Boolean(project.freelancer_id) },
   })
 
-  // Phase 21: When GATEWAY_PAYMENTS_ENABLED=true, reject starting work if unfunded
+  // Phase 21: When GATEWAY_PAYMENTS_ENABLED=true, reject starting work on agreement milestones if unfunded
   if (input.status === 'IN_PROGRESS' && milestone.status === 'PENDING') {
     if (env.gatewayPaymentsEnabled) {
-      const funded = await isProjectFunded(project.id)
-      if (!funded) {
-        throw conflict(
-          'Project funding required before starting work. The client must fund the project first.',
-        )
+      const activeAgreement = await findActiveAgreement(project.id)
+      if (milestone.agreement_id || activeAgreement) {
+        const funded = await isProjectFunded(project.id)
+        if (!funded) {
+          throw conflict(
+            'Project funding required before starting work. The client must fund the project first.',
+          )
+        }
       }
     }
   }

@@ -1,29 +1,5 @@
 import { query } from '../../db/pool.js'
 
-<<<<<<< HEAD
-export async function insertMilestone({
-  projectId,
-  agreementId = null,
-  title,
-  deliverables,
-  acceptanceCriteria,
-  amount,
-  dueDate = null,
-  reviewWindowDays = 7,
-  gracePeriodDays = 3,
-  maxRevisions = 3,
-  escalationStatus = 'NONE',
-  sortOrder = 0,
-  createdBy,
-  status = 'PENDING',
-}) {
-  const { rows } = await query(
-    `INSERT INTO milestones (
-       project_id, agreement_id, title, deliverables, acceptance_criteria,
-       amount, due_date, review_window_days, grace_period_days, max_revisions,
-       escalation_status, sort_order, created_by, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-=======
 export async function insertMilestone(
   {
     projectId,
@@ -34,7 +10,10 @@ export async function insertMilestone(
     acceptanceCriteria = null,
     amount,
     dueDate = null,
-    reviewWindowDays = null,
+    reviewWindowDays = 7,
+    gracePeriodDays = 3,
+    maxRevisions = 3,
+    escalationStatus = 'NONE',
     sortOrder = 0,
     createdBy,
     status = 'PENDING',
@@ -50,9 +29,9 @@ export async function insertMilestone(
   const { rows } = await runner.query(
     `INSERT INTO milestones (
        project_id, agreement_id, title, description, deliverables, acceptance_criteria,
-       amount, due_date, review_window_days, sort_order, created_by, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
->>>>>>> origin/main
+       amount, due_date, review_window_days, grace_period_days, max_revisions,
+       escalation_status, sort_order, created_by, status
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING *`,
     [
       projectId,
@@ -63,10 +42,10 @@ export async function insertMilestone(
       effectiveCriteria,
       amount,
       dueDate,
-      reviewWindowDays,
-      gracePeriodDays,
-      maxRevisions,
-      escalationStatus,
+      reviewWindowDays ?? 7,
+      gracePeriodDays ?? 3,
+      maxRevisions ?? 3,
+      escalationStatus ?? 'NONE',
       sortOrder,
       createdBy,
       status,

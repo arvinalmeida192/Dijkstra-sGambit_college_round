@@ -249,6 +249,17 @@ export async function createOrder(user, projectId, input = {}) {
     throw conflict('Gateway payments feature is disabled.')
   }
 
+  // Reject unconfigured or placeholder credentials at runtime when not running unit tests
+  if (
+    !env.isTest &&
+    (!env.razorpayKeyId ||
+      !env.razorpayKeySecret ||
+      env.razorpayKeyId.includes('REPLACE_WITH') ||
+      env.razorpayKeySecret.includes('REPLACE_WITH'))
+  ) {
+    throw conflict('Payment gateway is not properly configured with valid API keys.')
+  }
+
   const project = await findProjectById(projectId)
   assertClientOwner(project, user)
 
@@ -563,6 +574,121 @@ export async function releaseMilestone(user, milestoneId, input = {}) {
 }
 
 /**
+ * System/automatic release triggered by review-window expiry.
+ * Idempotent: checks for HELD funds, open disputes, and funding configuration.
+ * Disputed, cancelled, or unfunded milestones are safely bypassed without error.
+ */
+export async function tryAutoReleaseMilestoneFund(milestoneId) {
+  if (!env.gatewayPaymentsEnabled) {
+    return { released: false, reason: 'feature_disabled' }
+  }
+
+  const milestone = await findMilestoneById(milestoneId)
+  if (!milestone || milestone.status !== 'APPROVED') {
+    return { released: false, reason: 'not_approved' }
+  }
+
+  const openDispute = await findOpenDisputeForMilestone(milestoneId)
+  if (openDispute || milestone.status === 'DISPUTED') {
+    return { released: false, reason: 'disputed' }
+  }
+
+  const project = await findProjectById(milestone.project_id)
+  if (!project || project.status === 'CANCELLED') {
+    return { released: false, reason: 'project_cancelled' }
+  }
+
+  return withTransaction(async (client) => {
+    const fund = await findMilestoneFundForUpdate(milestoneId, client)
+    if (!fund) {
+      return { released: false, reason: 'not_funded' }
+    }
+
+    if (fund.status !== 'HELD' && fund.status !== 'FAILED') {
+      return { released: false, reason: `already_${fund.status.toLowerCase()}` }
+    }
+
+    const payoutProvider = getPayoutProvider(env.payoutMode)
+    let payoutResult
+    try {
+      payoutResult = await payoutProvider.createPayout({
+        fundId: fund.id,
+        milestoneId,
+        amount: Number(fund.amount),
+        currency: 'INR',
+      })
+    } catch (err) {
+      const failedFund = await markMilestoneFundFailed(
+        {
+          milestoneFundId: fund.id,
+          failureReason: err.message || 'Auto-payout provider failure',
+          metadata: {
+            error: err.message,
+            trigger: 'auto_approval_expiry',
+            attemptedAt: new Date().toISOString(),
+          },
+        },
+        client,
+      )
+      return {
+        released: false,
+        reason: 'payout_failed',
+        milestoneFund: toPublicMilestoneFund(failedFund),
+      }
+    }
+
+    const updatedFund = await releaseMilestoneFund(
+      {
+        milestoneFundId: fund.id,
+        releasedBy: project.client_id,
+        payoutReference: payoutResult.reference,
+        metadata: {
+          ...payoutResult,
+          trigger: 'auto_approval_expiry',
+        },
+      },
+      client,
+    )
+
+    await insertAuditLog(
+      {
+        actorId: null,
+        projectId: project.id,
+        milestoneId,
+        action: 'MILESTONE_FUNDS_RELEASED',
+        metadata: {
+          fundId: fund.id,
+          payoutReference: payoutResult.reference,
+          amount: fund.amount,
+          trigger: 'auto_approval_expiry',
+        },
+      },
+      client,
+    )
+
+    if (project.freelancer_id) {
+      await insertNotificationIgnoreConflict(
+        {
+          userId: project.freelancer_id,
+          projectId: project.id,
+          milestoneId,
+          kind: 'MILESTONE_RELEASED',
+          subjectKey: fund.id,
+          title: 'Milestone Funds Released (Auto)',
+          body: `Payment release for auto-approved milestone "${milestone.title}" has been recorded (${payoutResult.label || 'Sandbox payout'}).`,
+        },
+        client,
+      )
+    }
+
+    return {
+      released: true,
+      milestoneFund: toPublicMilestoneFund(updatedFund),
+    }
+  })
+}
+
+/**
  * POST /webhook: public provider endpoint with raw-body signature verification.
  */
 export async function processWebhook({ rawBody, signature, payload }) {
@@ -570,10 +696,15 @@ export async function processWebhook({ rawBody, signature, payload }) {
     return { status: 'ignored', reason: 'feature_disabled' }
   }
 
+  const secret = env.razorpayWebhookSecret || ''
+  if (!env.isTest && (!secret || secret.includes('REPLACE_WITH'))) {
+    throw conflict('Webhook processing is disabled: webhook secret is not configured.')
+  }
+
   const isValid = verifyWebhookSignature({
     rawBody,
     signature,
-    secret: env.razorpayWebhookSecret || 'placeholder_webhook_secret',
+    secret: secret || 'placeholder_webhook_secret',
   })
 
   if (!isValid) {
