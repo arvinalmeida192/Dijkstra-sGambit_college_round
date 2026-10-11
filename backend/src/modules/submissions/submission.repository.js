@@ -1,4 +1,5 @@
 import { query } from '../../db/pool.js'
+import { toPublicActivity } from '../activity/activity.summaries.js'
 
 function db(client) {
   return client ?? { query }
@@ -147,30 +148,46 @@ export async function insertAuditLog(
   return rows[0]
 }
 
-export async function listAuditLogsForProject(projectId, { limit = 100 } = {}) {
-  const { rows } = await query(
-    `SELECT * FROM audit_logs
-     WHERE project_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [projectId, Math.min(Number(limit) || 100, 500)],
-  )
-  return rows
+export async function listAuditLogsForProject(
+  projectId,
+  { limit = 20, offset = 0 } = {},
+) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100)
+  const safeOffset = Math.max(Number(offset) || 0, 0)
+
+  const [listResult, countResult] = await Promise.all([
+    query(
+      `SELECT
+         a.*,
+         u.name AS actor_name,
+         u.role AS actor_user_role,
+         m.title AS milestone_title
+       FROM audit_logs a
+       LEFT JOIN users u ON u.id = a.actor_id
+       LEFT JOIN milestones m ON m.id = a.milestone_id
+       WHERE a.project_id = $1
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT $2 OFFSET $3`,
+      [projectId, safeLimit, safeOffset],
+    ),
+    query(
+      `SELECT COUNT(*)::int AS total
+       FROM audit_logs
+       WHERE project_id = $1`,
+      [projectId],
+    ),
+  ])
+
+  return {
+    rows: listResult.rows,
+    total: countResult.rows[0]?.total ?? 0,
+    limit: safeLimit,
+    offset: safeOffset,
+  }
 }
 
-export function toPublicAuditLog(row) {
-  if (!row) return null
-  return {
-    id: row.id,
-    actorId: row.actor_id ?? null,
-    actor: row.actor_id ? 'user' : 'system',
-    projectId: row.project_id ?? null,
-    milestoneId: row.milestone_id ?? null,
-    submissionId: row.submission_id ?? null,
-    action: row.action,
-    metadata: row.metadata ?? {},
-    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
-  }
+export function toPublicAuditLog(row, project = {}) {
+  return toPublicActivity(row, project)
 }
 
 export function toPublicSubmission(row) {

@@ -547,9 +547,25 @@ export async function executeMilestoneReclaim(user, milestoneId) {
   return executeReclaim(user, milestoneId)
 }
 
-export async function listProjectAuditLogs(user, projectId) {
+export async function listProjectAuditLogs(
+  user,
+  projectId,
+  { limit = 20, offset = 0 } = {},
+) {
   const project = await findProjectById(projectId)
   assertParticipant(project, user)
-  const rows = await listAuditLogsForProject(projectId)
-  return { auditLogs: rows.map(toPublicAuditLog) }
+  const { rows, total, limit: safeLimit, offset: safeOffset } =
+    await listAuditLogsForProject(projectId, { limit, offset })
+  const projectContext = {
+    projectClientId: project.client_id,
+    projectFreelancerId: project.freelancer_id,
+  }
+  return {
+    auditLogs: rows.map((row) => toPublicAuditLog(row, projectContext)),
+    pagination: {
+      limit: safeLimit,
+      offset: safeOffset,
+      total,
+    },
+  }
 }

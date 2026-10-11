@@ -80,12 +80,25 @@ export type AuditLog = {
   id: string
   actorId: string | null
   actor: string
+  actorName?: string
+  actorRole?: string
   projectId: string | null
   milestoneId: string | null
+  milestoneTitle?: string | null
   submissionId: string | null
   action: string
+  eventType?: string
+  category?: string
+  summary?: string
   metadata: Record<string, unknown>
+  details?: Record<string, unknown>
   createdAt: string
+}
+
+export type AuditLogPagination = {
+  limit: number
+  offset: number
+  total: number
 }
 
 function auth(token: string) {
@@ -236,9 +249,20 @@ export function executeReclaim(token: string, milestoneId: string) {
   })
 }
 
-export function listProjectAuditLogs(token: string, projectId: string) {
-  return apiRequest<{ auditLogs: AuditLog[] }>(
-    `/api/v1/projects/${projectId}/audit-logs`,
-    { ...auth(token), method: 'GET' },
-  )
+export function listProjectAuditLogs(
+  token: string,
+  projectId: string,
+  options: { limit?: number; offset?: number } = {},
+) {
+  const params = new URLSearchParams()
+  if (options.limit != null) params.set('limit', String(options.limit))
+  if (options.offset != null) params.set('offset', String(options.offset))
+  const query = params.toString()
+  return apiRequest<{
+    auditLogs: AuditLog[]
+    pagination?: AuditLogPagination
+  }>(`/api/v1/projects/${projectId}/audit-logs${query ? `?${query}` : ''}`, {
+    ...auth(token),
+    method: 'GET',
+  })
 }
