@@ -129,6 +129,11 @@ export const cancelAndReclaimSchema = z.object({
   reason: z.string().trim().max(2000).optional().nullable(),
 })
 
+export const listAuditLogsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+})
+
 export function parseBody(schema, body) {
   const result = schema.safeParse(body ?? {})
   if (!result.success) {
@@ -149,4 +154,16 @@ export function assertUuid(value, label = 'id') {
     throw badRequest(`Invalid ${label}.`)
   }
   return value
+}
+
+export function parseQuery(schema, query) {
+  const result = schema.safeParse(query ?? {})
+  if (!result.success) {
+    const details = result.error.issues.map((issue) => ({
+      path: issue.path.join('.'),
+      message: issue.message,
+    }))
+    throw badRequest('Invalid query parameters.', details)
+  }
+  return result.data
 }

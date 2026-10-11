@@ -20,14 +20,20 @@ import {
   executeReclaim,
   listExtensions,
   listMilestones,
+  listProjectAuditLogs,
   proposeExtension,
   respondExtension,
   updateMilestone,
   updateMilestoneStatus,
+  type AuditLog,
   type Milestone,
   type MilestoneExtension,
   type MilestoneInput,
 } from '../lib/api/milestones'
+import {
+  ACTIVITY_PAGE_SIZE,
+  ActivityTimeline,
+} from '../components/activity/ActivityTimeline'
 import { listAgreements } from '../lib/api/agreements'
 import { getProject, type Project } from '../lib/api/projects'
 import {
@@ -78,6 +84,12 @@ export function ProgressPage() {
   >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const [activity, setActivity] = useState<AuditLog[]>([])
+  const [activityTotal, setActivityTotal] = useState(0)
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityLoadingMore, setActivityLoadingMore] = useState(false)
+  const [activityError, setActivityError] = useState<string | null>(null)
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
@@ -144,10 +156,33 @@ export function ProgressPage() {
         }),
       )
       setExtensionsByMilestone(Object.fromEntries(extensionResults))
+
+      setActivityLoading(true)
+      setActivityError(null)
+      try {
+        const activityResult = await listProjectAuditLogs(token, projectId, {
+          limit: ACTIVITY_PAGE_SIZE,
+          offset: 0,
+        })
+        setActivity(activityResult.auditLogs)
+        setActivityTotal(activityResult.pagination?.total ?? activityResult.auditLogs.length)
+      } catch (activityErr) {
+        setActivity([])
+        setActivityTotal(0)
+        setActivityError(
+          activityErr instanceof ApiError
+            ? activityErr.message
+            : 'Could not load project activity.',
+        )
+      } finally {
+        setActivityLoading(false)
+      }
     } catch (err) {
       setProject(null)
       setMilestones([])
       setSubmissionsByMilestone({})
+      setActivity([])
+      setActivityTotal(0)
       setExtensionsByMilestone({})
       setError(
         err instanceof ApiError
@@ -162,6 +197,39 @@ export function ProgressPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadMoreActivity = useCallback(async () => {
+    if (!token || !projectId || activityLoadingMore) return
+    if (activity.length >= activityTotal) return
+    setActivityLoadingMore(true)
+    setActivityError(null)
+    try {
+      const result = await listProjectAuditLogs(token, projectId, {
+        limit: ACTIVITY_PAGE_SIZE,
+        offset: activity.length,
+      })
+      setActivity((prev) => {
+        const seen = new Set(prev.map((item) => item.id))
+        const next = result.auditLogs.filter((item) => !seen.has(item.id))
+        return [...prev, ...next]
+      })
+      setActivityTotal(result.pagination?.total ?? activityTotal)
+    } catch (err) {
+      setActivityError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not load more activity.',
+      )
+    } finally {
+      setActivityLoadingMore(false)
+    }
+  }, [
+    token,
+    projectId,
+    activity.length,
+    activityTotal,
+    activityLoadingMore,
+  ])
 
   const actorRole = resolveActorRole(user?.id, user?.role, project)
   const isClient = actorRole === 'CLIENT'
@@ -642,6 +710,26 @@ export function ProgressPage() {
               ))}
             </div>
           )}
+
+          <Panel className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="font-display text-lg font-bold uppercase tracking-tight text-dark">
+                Activity timeline
+              </h2>
+              <p className="font-body text-sm text-dark/70">
+                Newest events first. Open an entry for details; collapsed rows
+                show only the summary, time, and actor.
+              </p>
+            </div>
+            <ActivityTimeline
+              items={activity}
+              loading={activityLoading}
+              loadingMore={activityLoadingMore}
+              error={activityError}
+              total={activityTotal}
+              onLoadMore={() => void loadMoreActivity()}
+            />
+          </Panel>
         </>
       ) : null}
 
