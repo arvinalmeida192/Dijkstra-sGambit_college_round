@@ -113,7 +113,31 @@ export function TermsView({ terms, compact = false }: TermsViewProps) {
                 {m.reviewWindowDays != null ? (
                   <span>Review window {m.reviewWindowDays}d</span>
                 ) : null}
+                {m.verificationMethod ? (
+                  <span className="font-bold text-dark">
+                    Verification: {m.verificationMethod.replace(/_/g, ' ')}
+                  </span>
+                ) : null}
+                {m.challengeWindowHours != null ? (
+                  <span>Challenge window {m.challengeWindowHours}h</span>
+                ) : null}
+                {m.disputeEscalationDays != null ? (
+                  <span>Escalation {m.disputeEscalationDays}d</span>
+                ) : null}
               </div>
+              {m.verificationCriteria?.automatedChecks &&
+              m.verificationCriteria.automatedChecks.length > 0 ? (
+                <div className="border-t border-dark/10 pt-2 font-mono text-[11px] text-dark/70 space-y-1">
+                  <span className="font-bold uppercase text-dark/50 block text-[10px]">
+                    Pre-Agreed Automated Checks
+                  </span>
+                  {m.verificationCriteria.automatedChecks.map((chk, cIdx) => (
+                    <div key={chk.id || cIdx}>
+                      • {chk.name} ({chk.type})
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>

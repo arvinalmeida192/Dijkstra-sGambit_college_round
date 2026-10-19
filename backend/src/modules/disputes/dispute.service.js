@@ -17,7 +17,17 @@ import {
   transitionSideEffects,
 } from '../milestones/milestone.transitions.js'
 import { findPaymentById } from '../payments/payment.repository.js'
-import { insertAuditLog } from '../submissions/submission.repository.js'
+import {
+  insertAuditLog,
+  listSubmissionsForMilestone,
+} from '../submissions/submission.repository.js'
+import {
+  findLatestAttestationForMilestone,
+  findLatestVerificationRunForMilestone,
+  findVerificationRunById,
+  toPublicAttestation,
+  toPublicVerificationRun,
+} from '../verification/verification.repository.js'
 import {
   claimDispute,
   findDisputeById,
@@ -150,7 +160,26 @@ export async function getDispute(user, disputeId) {
   const project = await findProjectById(dispute.project_id)
   assertParticipant(project, user)
   const evidence = await listEvidenceForDispute(disputeId)
-  return toPublicDispute(dispute, evidence)
+  const milestone = await findMilestoneById(dispute.milestone_id)
+  const verificationRun = dispute.verification_run_id
+    ? await findVerificationRunById(dispute.verification_run_id)
+    : await findLatestVerificationRunForMilestone(dispute.milestone_id)
+  const attestation = await findLatestAttestationForMilestone(dispute.milestone_id)
+
+  const pub = toPublicDispute(dispute, evidence)
+  pub.verificationContext = milestone
+    ? {
+        milestoneTitle: milestone.title,
+        verificationMethod: milestone.verification_method,
+        verificationStatus: milestone.verification_status,
+        verificationCriteria: toPublicMilestone(milestone).verificationCriteria,
+        frozenCriteriaHash: milestone.frozen_criteria_hash ?? null,
+        frozenAgreementVersion: milestone.frozen_agreement_version ?? null,
+        latestVerificationRun: toPublicVerificationRun(verificationRun),
+        latestAttestation: toPublicAttestation(attestation),
+      }
+    : null
+  return pub
 }
 
 export async function openDispute(user, milestoneId, input) {
@@ -184,6 +213,20 @@ export async function openDispute(user, milestoneId, input) {
     ? input.claimSummary.trim()
     : null
 
+  const submissions = await listSubmissionsForMilestone(milestone.id)
+  const latestSub = submissions[submissions.length - 1] ?? null
+  const evidenceSubmissionId =
+    input.evidenceSubmissionId ?? latestSub?.id ?? null
+  const verificationRunId =
+    input.verificationRunId ?? milestone.latest_verification_run_id ?? null
+  const disputedCriteriaRefs = Array.isArray(input.disputedCriteriaRefs)
+    ? input.disputedCriteriaRefs
+    : []
+  const escalationDays = Number(milestone.dispute_escalation_days ?? 7)
+  const escalationDueAt = new Date(
+    Date.now() + escalationDays * 24 * 60 * 60 * 1000,
+  )
+
   const result = await withTransaction(async (client) => {
     let current = milestone
     if (current.status !== 'DISPUTED') {
@@ -212,6 +255,10 @@ export async function openDispute(user, milestoneId, input) {
         openedBy: user.id,
         reason,
         claimSummary,
+        disputedCriteriaRefs,
+        evidenceSubmissionId,
+        verificationRunId,
+        escalationDueAt,
       },
       client,
     )
@@ -235,6 +282,10 @@ export async function openDispute(user, milestoneId, input) {
           disputeId: dispute.id,
           reason,
           openPaymentId: input.openPaymentId ?? null,
+          disputedCriteriaRefs,
+          evidenceSubmissionId,
+          verificationRunId,
+          escalationDueAt: escalationDueAt.toISOString(),
         },
       },
       client,
@@ -259,8 +310,8 @@ export async function claimForReview(user, disputeId) {
   const project = await findProjectById(dispute.project_id)
   assertParticipant(project, user)
 
-  if (dispute.status !== 'OPEN') {
-    throw conflict(`Dispute is ${dispute.status}; only OPEN disputes can be claimed.`)
+  if (dispute.status !== 'OPEN' && !(dispute.status === 'UNDER_REVIEW' && !dispute.arbitrator_id)) {
+    throw conflict(`Dispute is ${dispute.status}; only OPEN or unassigned escalated disputes can be claimed.`)
   }
 
   const updated = await claimDispute(disputeId, user.id)

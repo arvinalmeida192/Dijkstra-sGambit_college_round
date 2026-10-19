@@ -5,6 +5,11 @@ import {
 } from '../../utils/errors.js'
 import { env } from '../../config/env.js'
 import { isProjectFunded } from '../funding/funding.service.js'
+import { findFundedEscrowPaymentForMilestone } from '../payments/payment.repository.js'
+import {
+  computeFrozenCriteriaHash,
+  normalizeVerificationCriteria,
+} from '../verification/verification.criteria.js'
 import { withTransaction } from '../../db/pool.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
@@ -78,9 +83,20 @@ export function computeMilestoneProtectionMeta(milestone) {
       break
     case 'SUBMITTED':
     case 'IN_REVIEW':
-      nextAction = 'Review submission'
-      actionOwner = 'CLIENT'
-      actionDueAt = milestone.reviewDueAt ?? null
+      if (milestone.verificationStatus === 'CHALLENGE_WINDOW') {
+        nextAction =
+          'Objective verification PASSED; in challenge window before smart-contract-enforced release'
+        actionOwner = 'FREELANCER'
+        actionDueAt = milestone.challengeDueAt ?? milestone.reviewDueAt ?? null
+      } else if (milestone.verificationStatus === 'FAILED') {
+        nextAction = 'Objective verification FAILED; submit revised deliverable'
+        actionOwner = 'FREELANCER'
+        actionDueAt = milestone.dueDate ? `${milestone.dueDate}T23:59:59.000Z` : null
+      } else {
+        nextAction = 'Review submission'
+        actionOwner = 'CLIENT'
+        actionDueAt = milestone.reviewDueAt ?? null
+      }
       break
     case 'REVISION_REQUESTED':
       nextAction = 'Address revision feedback and resubmit'
@@ -93,7 +109,10 @@ export function computeMilestoneProtectionMeta(milestone) {
       actionDueAt = null
       break
     case 'APPROVED':
-      if (milestone.escalationStatus === 'AUTO_APPROVED') {
+      if (milestone.verificationStatus === 'VERIFIED_ELIGIBLE') {
+        nextAction = 'Execute verified release on-chain (or claim milestone funds)'
+        actionOwner = 'FREELANCER'
+      } else if (milestone.escalationStatus === 'AUTO_APPROVED') {
         nextAction = 'Execute auto-release (or report release tx on Payments)'
         actionOwner = 'CLIENT'
       } else {
@@ -185,13 +204,53 @@ export async function createMilestone(user, projectId, input) {
     }
   }
 
+  const method = input.verificationMethod ?? 'HUMAN_REVIEWED'
+  const normalizedCriteria = normalizeVerificationCriteria(
+    {
+      ...(input.verificationCriteria ?? {}),
+      acceptanceCriteria:
+        input.verificationCriteria?.acceptanceCriteria ??
+        input.acceptanceCriteria,
+      challengeWindowHours:
+        input.challengeWindowHours ??
+        input.verificationCriteria?.challengeWindowHours ??
+        48,
+      disputeEscalationDays:
+        input.disputeEscalationDays ??
+        input.verificationCriteria?.disputeEscalationDays ??
+        7,
+    },
+    method,
+  )
+
+  const frozenHash = computeFrozenCriteriaHash({
+    agreementVersion: 1,
+    milestoneNumber: (input.sortOrder ?? 0) + 1,
+    title: input.title,
+    deliverableDescription:
+      input.deliverableDescription ?? input.deliverables ?? input.description ?? '',
+    amount: input.amount,
+    verificationMethod: method,
+    verificationCriteria: normalizedCriteria,
+    maxRevisions: input.maxRevisions ?? 3,
+    challengeWindowHours: normalizedCriteria.challengeWindowHours,
+  })
+
   const row = await insertMilestone({
     projectId,
     agreementId,
     title: input.title,
     description: input.description ?? input.deliverables ?? '',
     deliverables: input.deliverables,
+    deliverableDescription:
+      input.deliverableDescription ?? input.deliverables ?? input.description ?? '',
     acceptanceCriteria: input.acceptanceCriteria,
+    verificationMethod: method,
+    verificationCriteria: normalizedCriteria,
+    frozenCriteriaHash: frozenHash,
+    frozenAgreementVersion: 1,
+    challengeWindowHours: normalizedCriteria.challengeWindowHours,
+    disputeEscalationDays: normalizedCriteria.disputeEscalationDays,
     amount: input.amount,
     dueDate: input.dueDate ?? null,
     reviewWindowDays: input.reviewWindowDays ?? 7,
@@ -236,14 +295,53 @@ export async function updateMilestone(user, milestoneId, input) {
     )
   }
 
+  const nextMethod =
+    input.verificationMethod ?? milestone.verification_method ?? 'HUMAN_REVIEWED'
+  const nextCriteria =
+    input.verificationCriteria !== undefined ||
+    input.verificationMethod !== undefined ||
+    input.challengeWindowHours !== undefined ||
+    input.disputeEscalationDays !== undefined
+      ? normalizeVerificationCriteria(
+          {
+            ...(milestone.verification_criteria ?? {}),
+            ...(input.verificationCriteria ?? {}),
+            challengeWindowHours:
+              input.challengeWindowHours ??
+              input.verificationCriteria?.challengeWindowHours ??
+              milestone.challenge_window_hours ??
+              48,
+            disputeEscalationDays:
+              input.disputeEscalationDays ??
+              input.verificationCriteria?.disputeEscalationDays ??
+              milestone.dispute_escalation_days ??
+              7,
+          },
+          nextMethod,
+        )
+      : undefined
+
   const row = await updateMilestoneFields(milestoneId, {
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.description !== undefined ? { description: input.description } : {}),
     ...(input.deliverables !== undefined
       ? { deliverables: input.deliverables }
       : {}),
+    ...(input.deliverableDescription !== undefined
+      ? { deliverableDescription: input.deliverableDescription }
+      : {}),
     ...(input.acceptanceCriteria !== undefined
       ? { acceptanceCriteria: input.acceptanceCriteria }
+      : {}),
+    ...(input.verificationMethod !== undefined
+      ? { verificationMethod: nextMethod }
+      : {}),
+    ...(nextCriteria !== undefined
+      ? {
+          verificationCriteria: nextCriteria,
+          challengeWindowHours: nextCriteria.challengeWindowHours,
+          disputeEscalationDays: nextCriteria.disputeEscalationDays,
+        }
       : {}),
     ...(input.amount !== undefined ? { amount: input.amount } : {}),
     ...(Object.prototype.hasOwnProperty.call(input, 'dueDate')
@@ -318,13 +416,17 @@ export async function changeMilestoneStatus(user, milestoneId, input) {
     context: { hasFreelancer: Boolean(project.freelancer_id) },
   })
 
-  // Phase 21: When GATEWAY_PAYMENTS_ENABLED=true, reject starting work on agreement milestones if unfunded
+  // Phase 21 / On-Chain Escrow: When GATEWAY_PAYMENTS_ENABLED=true, reject starting work on agreement milestones
+  // if neither gateway funding nor confirmed on-chain escrow funding is present.
   if (input.status === 'IN_PROGRESS' && milestone.status === 'PENDING') {
     if (env.gatewayPaymentsEnabled) {
       const activeAgreement = await findActiveAgreement(project.id)
       if (milestone.agreement_id || activeAgreement) {
-        const funded = await isProjectFunded(project.id)
-        if (!funded) {
+        const gatewayFunded = await isProjectFunded(project.id)
+        const onChainFunded = Boolean(
+          await findFundedEscrowPaymentForMilestone(milestoneId),
+        )
+        if (!gatewayFunded && !onChainFunded) {
           throw conflict(
             'Project funding required before starting work. The client must fund the project first.',
           )

@@ -10,6 +10,10 @@ const CATEGORY_BY_ACTION = {
   SUBMISSION_CREATED: 'submission',
   SUBMISSION_REVIEWED: 'review',
   REVISION_LIMIT_REACHED: 'review',
+  VERIFICATION_PASSED: 'verification',
+  VERIFICATION_FAILED: 'verification',
+  VERIFICATION_NEEDS_HUMAN_REVIEW: 'verification',
+  MILESTONE_VERIFIED_RELEASE_ELIGIBLE: 'verification',
   EXTENSION_PROPOSED: 'extension',
   EXTENSION_ACCEPTED: 'extension',
   EXTENSION_REJECTED: 'extension',
@@ -25,6 +29,7 @@ const CATEGORY_BY_ACTION = {
   PAYMENT_SYNCED: 'payment',
   DISPUTE_OPENED: 'dispute',
   DISPUTE_CLAIMED: 'dispute',
+  DISPUTE_ESCALATED: 'dispute',
   DISPUTE_EVIDENCE_ADDED: 'dispute',
   DISPUTE_RESOLUTION_PROPOSED: 'dispute',
   DISPUTE_RESOLVED: 'dispute',
@@ -68,6 +73,14 @@ export function summarizeAuditAction(action, metadata = {}, context = {}) {
       }
       return `${label} ${decisionLabel(meta.decision)}`
     }
+    case 'VERIFICATION_PASSED':
+      return `Independent verification passed for ${label} (signed attestation issued)`
+    case 'VERIFICATION_FAILED':
+      return `Independent verification failed for ${label}`
+    case 'VERIFICATION_NEEDS_HUMAN_REVIEW':
+      return `Verification routed ${label} to human review`
+    case 'MILESTONE_VERIFIED_RELEASE_ELIGIBLE':
+      return `${label} verified release unlocked`
     case 'REVISION_LIMIT_REACHED':
       return `Revision limit reached for ${label}`
     case 'EXTENSION_PROPOSED':
@@ -102,6 +115,8 @@ export function summarizeAuditAction(action, metadata = {}, context = {}) {
       return `Dispute opened${context.milestoneTitle ? ` for ${label}` : ''}`
     case 'DISPUTE_CLAIMED':
       return 'Dispute claimed by arbitrator'
+    case 'DISPUTE_ESCALATED':
+      return `Dispute escalated to arbitration${context.milestoneTitle ? ` for ${label}` : ''}`
     case 'DISPUTE_EVIDENCE_ADDED':
       return 'Evidence attached'
     case 'DISPUTE_RESOLUTION_PROPOSED':

@@ -22,6 +22,13 @@ export const openDisputeSchema = z
     claimSummary: z.string().trim().max(5000).optional().nullable(),
     /** Optional verified payment row for an on-chain DisputeOpened event. */
     openPaymentId: uuid.optional().nullable(),
+    disputedCriteriaRefs: z
+      .array(z.string().trim().min(1).max(200))
+      .max(50)
+      .optional()
+      .default([]),
+    evidenceSubmissionId: uuid.optional().nullable(),
+    verificationRunId: uuid.optional().nullable(),
   })
   .strict()
 

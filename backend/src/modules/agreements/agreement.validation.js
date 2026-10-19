@@ -26,11 +26,31 @@ const milestoneTermsSchema = z.object({
     .max(5000)
     .optional(),
   deliverable: z.string().trim().max(5000).optional(),
+  deliverableDescription: z.string().trim().max(5000).optional(),
   acceptanceCriteria: z
     .string()
     .trim()
     .max(5000)
     .optional(),
+  verificationMethod: z
+    .enum(['AUTOMATED_CHECK', 'EVIDENCE_INTEGRITY_CHECK', 'HUMAN_REVIEWED'])
+    .optional()
+    .default('HUMAN_REVIEWED'),
+  verificationCriteria: z.record(z.string(), z.any()).optional().default({}),
+  challengeWindowHours: z
+    .number()
+    .int()
+    .min(0)
+    .max(720)
+    .optional()
+    .default(48),
+  disputeEscalationDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(90)
+    .optional()
+    .default(7),
   /** Integer token base units / cents — never floats. Positive payment amount. */
   amount: z
     .number({ required_error: 'Milestone amount is required.' })

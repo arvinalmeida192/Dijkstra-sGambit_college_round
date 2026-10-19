@@ -3,9 +3,14 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { Select } from '../../components/ui/Select'
 import { Textarea } from '../../components/ui/Textarea'
 import { formatAmountBaseUnits } from '../../lib/agreementStatus'
 import type { AgreementTermsInput } from '../../lib/api/agreements'
+import type {
+  AutomatedCheckType,
+  VerificationMethod,
+} from '../../lib/api/verification'
 
 type MilestoneDraft = {
   title: string
@@ -18,6 +23,12 @@ type MilestoneDraft = {
   reviewWindowDays: string
   gracePeriodDays: string
   maxRevisions: string
+  verificationMethod: VerificationMethod
+  challengeWindowHours: string
+  disputeEscalationDays: string
+  expectedSha256: string
+  automatedCheckType: AutomatedCheckType
+  automatedCheckConfigText: string
 }
 
 type TermsFormProps = {
@@ -39,6 +50,12 @@ function emptyMilestone(): MilestoneDraft {
     reviewWindowDays: '7',
     gracePeriodDays: '3',
     maxRevisions: '3',
+    verificationMethod: 'HUMAN_REVIEWED',
+    challengeWindowHours: '24',
+    disputeEscalationDays: '7',
+    expectedSha256: '',
+    automatedCheckType: 'JSON_ASSERTIONS',
+    automatedCheckConfigText: '',
   }
 }
 
@@ -82,19 +99,33 @@ function fromTerms(terms?: AgreementTermsInput): {
       legacyTotalCents > 0 ? (legacyTotalCents / 100).toFixed(2) : '',
     finalDueDate: legacyLastDue,
     notes: terms.notes ?? '',
-    milestones: terms.milestones.map((m) => ({
-      title: m.title,
-      description: m.description ?? '',
-      deliverables: m.deliverables ?? m.description ?? '',
-      acceptanceCriteria: m.acceptanceCriteria ?? '',
-      amountMajor: (m.amount / 100).toFixed(2),
-      dueDate: m.dueDate ?? '',
-      reviewWindowDays:
-        m.reviewWindowDays != null ? String(m.reviewWindowDays) : '7',
-      gracePeriodDays:
-        m.gracePeriodDays != null ? String(m.gracePeriodDays) : '3',
-      maxRevisions: m.maxRevisions != null ? String(m.maxRevisions) : '3',
-    })),
+    milestones: terms.milestones.map((m) => {
+      const firstCheck = m.verificationCriteria?.automatedChecks?.[0]
+      return {
+        title: m.title,
+        description: m.description ?? '',
+        deliverables: m.deliverables ?? m.description ?? '',
+        acceptanceCriteria: m.acceptanceCriteria ?? '',
+        amountMajor: (m.amount / 100).toFixed(2),
+        dueDate: m.dueDate ?? '',
+        reviewWindowDays:
+          m.reviewWindowDays != null ? String(m.reviewWindowDays) : '7',
+        gracePeriodDays:
+          m.gracePeriodDays != null ? String(m.gracePeriodDays) : '3',
+        maxRevisions: m.maxRevisions != null ? String(m.maxRevisions) : '3',
+        verificationMethod: m.verificationMethod ?? 'HUMAN_REVIEWED',
+        challengeWindowHours:
+          m.challengeWindowHours != null ? String(m.challengeWindowHours) : '24',
+        disputeEscalationDays:
+          m.disputeEscalationDays != null ? String(m.disputeEscalationDays) : '7',
+        expectedSha256:
+          m.verificationCriteria?.requiredEvidence?.expectedSha256 ?? '',
+        automatedCheckType: firstCheck?.type ?? 'JSON_ASSERTIONS',
+        automatedCheckConfigText: firstCheck?.config
+          ? JSON.stringify(firstCheck.config, null, 2)
+          : '',
+      }
+    }),
   }
 }
 
@@ -268,6 +299,44 @@ export function TermsForm({
         }
       }
 
+      let challengeWindowHours: number | undefined = 24
+      if (m.challengeWindowHours.trim()) {
+        const n = Number(m.challengeWindowHours)
+        if (!Number.isInteger(n) || n < 0 || n > 720) {
+          errors[`${prefix}.challengeWindowHours`] = '0 to 720 hours.'
+        } else {
+          challengeWindowHours = n
+        }
+      }
+
+      let disputeEscalationDays: number | undefined = 7
+      if (m.disputeEscalationDays.trim()) {
+        const n = Number(m.disputeEscalationDays)
+        if (!Number.isInteger(n) || n < 1 || n > 90) {
+          errors[`${prefix}.disputeEscalationDays`] = '1 to 90 days.'
+        } else {
+          disputeEscalationDays = n
+        }
+      }
+
+      let parsedAutoConfig: Record<string, unknown> = {}
+      if (
+        m.verificationMethod === 'AUTOMATED_CHECK' &&
+        m.automatedCheckConfigText.trim()
+      ) {
+        try {
+          const parsed = JSON.parse(m.automatedCheckConfigText.trim())
+          if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            errors[`${prefix}.automatedCheckConfigText`] =
+              'Must be a JSON object.'
+          } else {
+            parsedAutoConfig = parsed as Record<string, unknown>
+          }
+        } catch {
+          errors[`${prefix}.automatedCheckConfigText`] = 'Invalid JSON syntax.'
+        }
+      }
+
       if (
         !errors[`${prefix}.title`] &&
         !errors[`${prefix}.deliverables`] &&
@@ -275,14 +344,50 @@ export function TermsForm({
         !errors[`${prefix}.dueDate`] &&
         !errors[`${prefix}.reviewWindowDays`] &&
         !errors[`${prefix}.gracePeriodDays`] &&
-        !errors[`${prefix}.maxRevisions`]
+        !errors[`${prefix}.maxRevisions`] &&
+        !errors[`${prefix}.challengeWindowHours`] &&
+        !errors[`${prefix}.disputeEscalationDays`] &&
+        !errors[`${prefix}.automatedCheckConfigText`]
       ) {
+        const criteriaLines = (m.acceptanceCriteria.trim() || 'Deliverable accepted')
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+
+        const automatedChecks =
+          m.verificationMethod === 'AUTOMATED_CHECK'
+            ? [
+                {
+                  id: `check-${index + 1}`,
+                  name: `${m.automatedCheckType} Verification`,
+                  type: m.automatedCheckType,
+                  config: parsedAutoConfig,
+                },
+              ]
+            : []
+
         parsedMilestones.push({
           title: m.title.trim(),
           description: m.description.trim() || undefined,
           deliverables: m.deliverables.trim() || m.description.trim(),
+          deliverableDescription: m.deliverables.trim() || m.description.trim(),
           acceptanceCriteria:
             m.acceptanceCriteria.trim() || 'Deliverable accepted',
+          verificationMethod: m.verificationMethod,
+          challengeWindowHours,
+          disputeEscalationDays,
+          verificationCriteria: {
+            acceptanceCriteria: criteriaLines,
+            requiredEvidence: {
+              requireFile:
+                m.verificationMethod === 'AUTOMATED_CHECK' ||
+                m.verificationMethod === 'EVIDENCE_INTEGRITY_CHECK',
+              expectedSha256: m.expectedSha256.trim() || null,
+            },
+            automatedChecks,
+            challengeWindowHours,
+            disputeEscalationDays,
+          },
           amount: amount!,
           dueDate: m.dueDate.trim(),
           reviewWindowDays,
@@ -676,6 +781,131 @@ export function TermsForm({
                 error={fieldErrors[`m${index}.maxRevisions`]}
                 disabled={busy}
               />
+            </div>
+
+            <div className="border-t-2 border-dark/10 pt-3 space-y-3 bg-neutral-50/70 p-3">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/60">
+                Verifiable Fulfilment &amp; Smart-Contract Release Rules
+              </p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Select
+                  label="Verification method"
+                  name={`m${index}-verification-method`}
+                  value={m.verificationMethod}
+                  disabled={busy}
+                  options={[
+                    {
+                      value: 'HUMAN_REVIEWED',
+                      label: 'Human-Reviewed (Subjective Criteria)',
+                    },
+                    {
+                      value: 'EVIDENCE_INTEGRITY_CHECK',
+                      label: 'Cryptographic Evidence Integrity Check',
+                    },
+                    {
+                      value: 'AUTOMATED_CHECK',
+                      label: 'Automated Objective Check (Sandbox / JSON / Text)',
+                    },
+                  ]}
+                  onChange={(e) =>
+                    updateMilestone(index, {
+                      verificationMethod: e.target.value as VerificationMethod,
+                    })
+                  }
+                />
+                <Input
+                  label="Challenge window (hours)"
+                  name={`m${index}-challenge-hours`}
+                  inputMode="numeric"
+                  value={m.challengeWindowHours}
+                  onChange={(e) =>
+                    updateMilestone(index, {
+                      challengeWindowHours: e.target.value,
+                    })
+                  }
+                  error={fieldErrors[`m${index}.challengeWindowHours`]}
+                  hint="0 = immediate verified release"
+                  disabled={busy}
+                />
+                <Input
+                  label="Dispute escalation (days)"
+                  name={`m${index}-escalation-days`}
+                  inputMode="numeric"
+                  value={m.disputeEscalationDays}
+                  onChange={(e) =>
+                    updateMilestone(index, {
+                      disputeEscalationDays: e.target.value,
+                    })
+                  }
+                  error={fieldErrors[`m${index}.disputeEscalationDays`]}
+                  hint="Max days before arbitrator escalation"
+                  disabled={busy}
+                />
+              </div>
+
+              {m.verificationMethod !== 'HUMAN_REVIEWED' ? (
+                <Input
+                  label="Expected Artifact SHA-256 Digest (optional)"
+                  name={`m${index}-expected-sha256`}
+                  value={m.expectedSha256}
+                  onChange={(e) =>
+                    updateMilestone(index, { expectedSha256: e.target.value })
+                  }
+                  hint="64-char hex digest if a specific pre-agreed artifact hash is required"
+                  placeholder="e.g. e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  disabled={busy}
+                />
+              ) : null}
+
+              {m.verificationMethod === 'AUTOMATED_CHECK' ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Select
+                    label="Automated check runner"
+                    name={`m${index}-auto-type`}
+                    value={m.automatedCheckType}
+                    disabled={busy}
+                    options={[
+                      {
+                        value: 'JSON_ASSERTIONS',
+                        label: 'JSON Schema / Key-Value Assertions',
+                      },
+                      {
+                        value: 'TEXT_PATTERNS',
+                        label: 'Source / Text Pattern Verification',
+                      },
+                      {
+                        value: 'SANDBOX_JS_TEST',
+                        label: 'Isolated Sandboxed JS Deliverable Test',
+                      },
+                    ]}
+                    onChange={(e) =>
+                      updateMilestone(index, {
+                        automatedCheckType: e.target.value as AutomatedCheckType,
+                      })
+                    }
+                  />
+                  <Textarea
+                    label="Check configuration (JSON)"
+                    name={`m${index}-auto-config`}
+                    value={m.automatedCheckConfigText}
+                    onChange={(e) =>
+                      updateMilestone(index, {
+                        automatedCheckConfigText: e.target.value,
+                      })
+                    }
+                    error={fieldErrors[`m${index}.automatedCheckConfigText`]}
+                    rows={3}
+                    placeholder={
+                      m.automatedCheckType === 'SANDBOX_JS_TEST'
+                        ? '{"assertions":[{"name":"fn(2,3)==5","fn":"add","args":[2,3],"expected":5}]}'
+                        : m.automatedCheckType === 'TEXT_PATTERNS'
+                          ? '{"mustContain":["export"],"mustNotContain":["TODO"]}'
+                          : '{"requiredKeys":["version"],"rules":[{"path":"version","equals":"1.0.0"}]}'
+                    }
+                    disabled={busy}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         ))}

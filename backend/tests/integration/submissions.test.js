@@ -246,6 +246,7 @@ describe('Submissions API', () => {
     )
     expect(audit.rows.map((r) => r.action)).toEqual([
       'SUBMISSION_CREATED',
+      'VERIFICATION_NEEDS_HUMAN_REVIEW',
       'SUBMISSION_REVIEWED',
       'SUBMISSION_REVIEWED',
     ])

@@ -23,6 +23,13 @@ import {
   storePrivateFile,
 } from './submission.storage.js'
 import {
+  findLatestAttestationForMilestone,
+  listVerificationRunsForMilestone,
+  toPublicAttestation,
+  toPublicVerificationRun,
+} from '../verification/verification.repository.js'
+import { evaluateSubmissionVerification } from '../verification/verification.service.js'
+import {
   getNextRevision,
   getPrivateFileRef,
   insertAuditLog,
@@ -155,10 +162,13 @@ export async function listSubmissions(user, milestoneId) {
   const project = await findProjectById(milestone.project_id)
   assertParticipant(project, user)
 
-  const [submissions, reviews] = await Promise.all([
-    listSubmissionsForMilestone(milestoneId),
-    listReviewsForMilestone(milestoneId),
-  ])
+  const [submissions, reviews, verificationRuns, latestAttestation] =
+    await Promise.all([
+      listSubmissionsForMilestone(milestoneId),
+      listReviewsForMilestone(milestoneId),
+      listVerificationRunsForMilestone(milestoneId),
+      findLatestAttestationForMilestone(milestoneId),
+    ])
 
   const reviewsBySubmission = new Map()
   for (const review of reviews) {
@@ -167,11 +177,21 @@ export async function listSubmissions(user, milestoneId) {
     reviewsBySubmission.set(review.submission_id, list)
   }
 
+  const verificationsBySubmission = new Map()
+  for (const vRun of verificationRuns) {
+    const list = verificationsBySubmission.get(vRun.submission_id) ?? []
+    list.push(toPublicVerificationRun(vRun))
+    verificationsBySubmission.set(vRun.submission_id, list)
+  }
+
   return {
     milestone: withAllowedTransitions(milestone),
+    latestAttestation: toPublicAttestation(latestAttestation),
+    verificationRuns: verificationRuns.map(toPublicVerificationRun),
     submissions: submissions.map((row) => ({
       ...toPublicSubmission(row),
       reviews: reviewsBySubmission.get(row.id) ?? [],
+      verificationRuns: verificationsBySubmission.get(row.id) ?? [],
     })),
   }
 }
@@ -301,9 +321,19 @@ export async function createSubmission(user, milestoneId, input, file) {
       return { row, updatedMilestone }
     })
 
+    // Automatically run independent verification against frozen milestone criteria
+    const verificationResult = await evaluateSubmissionVerification(
+      result.row.id,
+      { actorId: user.id },
+    )
+    const finalMilestoneRow =
+      (await findMilestoneById(milestoneId)) ?? result.updatedMilestone
+
     return {
       submission: toPublicSubmission(result.row),
-      milestone: withAllowedTransitions(result.updatedMilestone),
+      milestone: withAllowedTransitions(finalMilestoneRow),
+      verificationRun: verificationResult.verificationRun,
+      attestation: verificationResult.attestation,
     }
   } catch (err) {
     if (stored?.fileRef) {
@@ -356,6 +386,18 @@ export async function reviewSubmission(user, submissionId, input) {
   }
 
   if (input.decision === 'REVISION_REQUESTED') {
+    if (
+      milestone.verification_method &&
+      milestone.verification_method !== 'HUMAN_REVIEWED' &&
+      ['PASSED', 'CHALLENGE_WINDOW', 'VERIFIED_ELIGIBLE'].includes(
+        milestone.verification_status,
+      )
+    ) {
+      throw conflict(
+        'Cannot unilaterally request revision on a milestone that has passed independent objective verification. Open an evidence-backed dispute during the challenge window if you contest the verified result.',
+      )
+    }
+
     const previousReviews = await listReviewsForMilestone(milestone.id)
     const revisionRequests = previousReviews.filter(
       (r) => r.decision === 'REVISION_REQUESTED',
@@ -377,7 +419,16 @@ export async function reviewSubmission(user, submissionId, input) {
       .split(/\r?\n|;/)
       .map((s) => s.trim())
       .filter(Boolean)
-    const normalized = new Set(criteriaLines.map((s) => s.toLowerCase()))
+    const structuredCriteria = Array.isArray(
+      milestone.verification_criteria?.acceptanceCriteria,
+    )
+      ? milestone.verification_criteria.acceptanceCriteria
+          .map((s) => String(s ?? '').trim())
+          .filter(Boolean)
+      : []
+    const normalized = new Set(
+      [...criteriaLines, ...structuredCriteria].map((s) => s.toLowerCase()),
+    )
     // If criteria are a single paragraph, allow selecting that whole text.
     if (normalized.size === 0 && milestone.acceptance_criteria?.trim()) {
       normalized.add(milestone.acceptance_criteria.trim().toLowerCase())

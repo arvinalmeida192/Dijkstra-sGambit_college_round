@@ -16,6 +16,9 @@ export const storageConfig = {
     'application/pdf',
     'application/zip',
     'application/json',
+    'application/javascript',
+    'application/x-javascript',
+    'text/javascript',
     'text/plain',
     'text/markdown',
     'text/csv',
@@ -26,5 +29,6 @@ export const storageConfig = {
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/octet-stream',
   ],
 }

@@ -7,6 +7,10 @@ import { insertMilestone } from '../milestones/milestone.repository.js'
 import { findProjectById } from '../projects/project.repository.js'
 import { assertParticipant } from '../projects/project.service.js'
 import {
+  computeFrozenCriteriaHash,
+  normalizeVerificationCriteria,
+} from '../verification/verification.criteria.js'
+import {
   activateAgreement,
   findActiveAgreement,
   findAgreementById,
@@ -123,21 +127,52 @@ export async function createAgreement(user, projectId, input) {
     if (Array.isArray(input.terms?.milestones)) {
       for (let i = 0; i < input.terms.milestones.length; i++) {
         const m = input.terms.milestones[i]
+        const method = m.verificationMethod ?? 'HUMAN_REVIEWED'
+        const normalizedCriteria = normalizeVerificationCriteria(
+          {
+            ...(m.verificationCriteria ?? {}),
+            acceptanceCriteria:
+              m.verificationCriteria?.acceptanceCriteria ??
+              m.acceptanceCriteria ??
+              m.description ??
+              m.deliverables ??
+              'Deliverable accepted',
+            challengeWindowHours:
+              m.challengeWindowHours ??
+              m.verificationCriteria?.challengeWindowHours ??
+              48,
+            disputeEscalationDays:
+              m.disputeEscalationDays ??
+              m.verificationCriteria?.disputeEscalationDays ??
+              7,
+          },
+          method,
+        )
+
         await insertMilestone(
           {
             projectId,
             agreementId: agreement.id,
             title: m.title,
             description: m.description ?? m.deliverables ?? '',
-            deliverables: m.deliverables ?? m.description ?? '',
+            deliverables:
+              m.deliverables ?? m.deliverableDescription ?? m.description ?? '',
+            deliverableDescription:
+              m.deliverableDescription ?? m.deliverables ?? m.description ?? '',
             acceptanceCriteria:
               m.acceptanceCriteria ??
               m.description ??
               m.deliverables ??
               'Deliverable accepted',
+            verificationMethod: method,
+            verificationCriteria: normalizedCriteria,
+            challengeWindowHours: normalizedCriteria.challengeWindowHours,
+            disputeEscalationDays: normalizedCriteria.disputeEscalationDays,
             amount: m.amount,
             dueDate: m.dueDate ?? null,
             reviewWindowDays: m.reviewWindowDays ?? null,
+            gracePeriodDays: m.gracePeriodDays ?? 3,
+            maxRevisions: m.maxRevisions ?? 3,
             sortOrder: i,
             createdBy: user.id,
             status: 'PENDING',
@@ -250,8 +285,10 @@ export async function acceptAgreement(user, agreementId, input = {}) {
       }
 
       if (previousActiveId && Array.isArray(agreement.terms?.milestones)) {
-        await syncAgreementMilestones(project.id, agreement, client)
+        await syncAgreementMilestones(project.id, activated, client)
       }
+
+      await freezeActiveAgreementMilestones(project.id, activated, client)
 
       return activated
     })
@@ -259,6 +296,56 @@ export async function acceptAgreement(user, agreementId, input = {}) {
   }
 
   return toPublicAgreement(current, acceptances)
+}
+
+/**
+ * Freeze the verification criteria digest on all PENDING milestones (or milestones not yet frozen)
+ * when both parties accept the same agreement version.
+ * Already-submitted milestones preserve the frozen criteria from the version under which they were submitted.
+ */
+async function freezeActiveAgreementMilestones(projectId, agreement, client) {
+  const { rows: milestones } = await client.query(
+    `SELECT * FROM milestones WHERE project_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    [projectId],
+  )
+
+  for (let i = 0; i < milestones.length; i++) {
+    const ms = milestones[i]
+    if (ms.status !== 'PENDING' && ms.frozen_criteria_hash) {
+      // Preserve frozen criteria for milestones that already have submissions/verifications
+      continue
+    }
+
+    const rawCriteria =
+      ms.verification_criteria && typeof ms.verification_criteria === 'object'
+        ? ms.verification_criteria
+        : typeof ms.verification_criteria === 'string'
+          ? JSON.parse(ms.verification_criteria)
+          : {}
+
+    const frozenHash = computeFrozenCriteriaHash({
+      agreementVersion: agreement.version,
+      milestoneNumber: (ms.sort_order ?? i) + 1,
+      title: ms.title,
+      deliverableDescription:
+        ms.deliverable_description ?? ms.deliverables ?? ms.description ?? '',
+      amount: Number(ms.amount),
+      verificationMethod: ms.verification_method ?? 'HUMAN_REVIEWED',
+      verificationCriteria: rawCriteria,
+      maxRevisions: ms.max_revisions ?? 3,
+      challengeWindowHours: ms.challenge_window_hours ?? 48,
+    })
+
+    await client.query(
+      `UPDATE milestones
+       SET frozen_criteria_hash = $1,
+           frozen_agreement_version = $2,
+           agreement_id = $3,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [frozenHash, agreement.version, agreement.id, ms.id],
+    )
+  }
 }
 
 async function syncAgreementMilestones(projectId, agreement, client) {
@@ -270,6 +357,30 @@ async function syncAgreementMilestones(projectId, agreement, client) {
 
   for (let i = 0; i < termsMilestones.length; i++) {
     const m = termsMilestones[i]
+    const method = m.verificationMethod ?? existing[i]?.verification_method ?? 'HUMAN_REVIEWED'
+    const normalizedCriteria = normalizeVerificationCriteria(
+      {
+        ...(m.verificationCriteria ?? {}),
+        acceptanceCriteria:
+          m.verificationCriteria?.acceptanceCriteria ??
+          m.acceptanceCriteria ??
+          m.description ??
+          m.deliverables ??
+          'Deliverable accepted',
+        challengeWindowHours:
+          m.challengeWindowHours ??
+          m.verificationCriteria?.challengeWindowHours ??
+          existing[i]?.challenge_window_hours ??
+          48,
+        disputeEscalationDays:
+          m.disputeEscalationDays ??
+          m.verificationCriteria?.disputeEscalationDays ??
+          existing[i]?.dispute_escalation_days ??
+          7,
+      },
+      method,
+    )
+
     if (existing[i]) {
       if (existing[i].status === 'PENDING') {
         await client.query(
@@ -278,35 +389,44 @@ async function syncAgreementMilestones(projectId, agreement, client) {
                title = $2,
                description = $3,
                deliverables = $4,
-               acceptance_criteria = $5,
-               amount = $6,
-               due_date = $7,
-               review_window_days = $8,
-               sort_order = $9,
+               deliverable_description = $5,
+               acceptance_criteria = $6,
+               verification_method = $7,
+               verification_criteria = $8::jsonb,
+               challenge_window_hours = $9,
+               dispute_escalation_days = $10,
+               amount = $11,
+               due_date = $12,
+               review_window_days = $13,
+               max_revisions = $14,
+               sort_order = $15,
                updated_at = NOW()
-           WHERE id = $10`,
+           WHERE id = $16`,
           [
             agreement.id,
             m.title,
             m.description ?? m.deliverables ?? '',
-            m.deliverables ?? m.description ?? '',
+            m.deliverables ?? m.deliverableDescription ?? m.description ?? '',
+            m.deliverableDescription ?? m.deliverables ?? m.description ?? '',
             m.acceptanceCriteria ??
               m.description ??
               m.deliverables ??
               'Deliverable accepted',
+            method,
+            JSON.stringify(normalizedCriteria),
+            normalizedCriteria.challengeWindowHours,
+            normalizedCriteria.disputeEscalationDays,
             m.amount,
             m.dueDate ?? null,
-            m.reviewWindowDays ?? null,
+            m.reviewWindowDays ?? existing[i].review_window_days ?? 7,
+            m.maxRevisions ?? existing[i].max_revisions ?? 3,
             i,
             existing[i].id,
           ],
         )
-      } else {
-        await client.query(
-          `UPDATE milestones SET agreement_id = $1, updated_at = NOW() WHERE id = $2`,
-          [agreement.id, existing[i].id],
-        )
       }
+      // Note: Non-PENDING milestones already have submissions/reviews/verifications;
+      // their frozen_criteria_hash, frozen_agreement_version, and agreement_id are preserved for auditability.
     } else {
       await insertMilestone(
         {
@@ -314,15 +434,23 @@ async function syncAgreementMilestones(projectId, agreement, client) {
           agreementId: agreement.id,
           title: m.title,
           description: m.description ?? m.deliverables ?? '',
-          deliverables: m.deliverables ?? m.description ?? '',
+          deliverables:
+            m.deliverables ?? m.deliverableDescription ?? m.description ?? '',
+          deliverableDescription:
+            m.deliverableDescription ?? m.deliverables ?? m.description ?? '',
           acceptanceCriteria:
             m.acceptanceCriteria ??
             m.description ??
             m.deliverables ??
             'Deliverable accepted',
+          verificationMethod: method,
+          verificationCriteria: normalizedCriteria,
+          challengeWindowHours: normalizedCriteria.challengeWindowHours,
+          disputeEscalationDays: normalizedCriteria.disputeEscalationDays,
           amount: m.amount,
           dueDate: m.dueDate ?? null,
           reviewWindowDays: m.reviewWindowDays ?? null,
+          maxRevisions: m.maxRevisions ?? 3,
           sortOrder: i,
           createdBy: agreement.created_by,
           status: 'PENDING',

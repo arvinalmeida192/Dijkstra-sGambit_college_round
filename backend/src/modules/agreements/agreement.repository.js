@@ -5,15 +5,19 @@ export async function insertAgreement(
   client,
 ) {
   const runner = client ?? { query }
+  const milestoneTerms = Array.isArray(terms?.milestones)
+    ? terms.milestones
+    : []
   const { rows } = await runner.query(
     `INSERT INTO agreements (
-       project_id, version, terms, status, created_by, supersedes_id
-     ) VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+       project_id, version, terms, milestone_terms, status, created_by, supersedes_id
+     ) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7)
      RETURNING *`,
     [
       projectId,
       version,
       JSON.stringify(terms),
+      JSON.stringify(milestoneTerms),
       status,
       createdBy,
       supersedesId,

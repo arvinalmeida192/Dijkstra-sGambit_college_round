@@ -1,6 +1,11 @@
 import { apiRequest } from './client'
 import type { MilestoneStatus } from '../milestoneStatus'
 import type { Payment } from './payments'
+import type {
+  VerificationCriteria,
+  VerificationMethod,
+  VerificationStatus,
+} from './verification'
 
 export type Milestone = {
   id: string
@@ -9,7 +14,18 @@ export type Milestone = {
   title: string
   description?: string | null
   deliverables: string
+  deliverableDescription?: string
   acceptanceCriteria: string
+  verificationMethod?: VerificationMethod
+  verificationCriteria?: VerificationCriteria
+  frozenCriteriaHash?: string | null
+  frozenAgreementVersion?: number | null
+  verificationStatus?: VerificationStatus
+  challengeWindowHours?: number
+  challengeDueAt?: string | null
+  disputeEscalationDays?: number
+  latestVerificationRunId?: string | null
+  latestAttestationId?: string | null
   amount: number
   dueDate: string | null
   reviewWindowDays: number | null
@@ -36,7 +52,12 @@ export type MilestoneInput = {
   title: string
   description?: string | null
   deliverables: string
+  deliverableDescription?: string | null
   acceptanceCriteria: string
+  verificationMethod?: VerificationMethod
+  verificationCriteria?: VerificationCriteria
+  challengeWindowHours?: number
+  disputeEscalationDays?: number
   amount: number
   dueDate?: string | null
   reviewWindowDays?: number | null
@@ -52,7 +73,12 @@ export type MilestoneUpdateInput = Partial<
     | 'title'
     | 'description'
     | 'deliverables'
+    | 'deliverableDescription'
     | 'acceptanceCriteria'
+    | 'verificationMethod'
+    | 'verificationCriteria'
+    | 'challengeWindowHours'
+    | 'disputeEscalationDays'
     | 'amount'
     | 'dueDate'
     | 'reviewWindowDays'

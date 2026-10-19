@@ -46,6 +46,7 @@ import {
   type SubmissionInput,
 } from '../lib/api/submissions'
 import { openDispute } from '../lib/api/disputes'
+import { executeVerifiedRelease } from '../lib/api/verification'
 import {
   getMilestoneActionLabel,
   transitionRequiresNote,
@@ -423,6 +424,30 @@ export function ProgressPage() {
     }
   }
 
+  async function onExecuteVerifiedRelease(milestone: Milestone) {
+    if (!token) return
+    setBusyId(milestone.id)
+    setActionError(null)
+    setActionSuccess(null)
+    try {
+      const result = await executeVerifiedRelease(token, milestone.id)
+      setActionSuccess(
+        result.txHash
+          ? `Verified smart-contract release confirmed: ${result.txHash}`
+          : result.notice || 'Verified release processed.',
+      )
+      await load()
+    } catch (err) {
+      setActionError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not execute verified release.',
+      )
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function onExecuteReclaim(milestone: Milestone) {
     if (!token) return
     setBusyId(milestone.id)
@@ -704,6 +729,9 @@ export function ProgressPage() {
                   }
                   onCancelAndReclaim={() => onCancelAndReclaim(milestone)}
                   onExecuteAutoRelease={() => onExecuteAutoRelease(milestone)}
+                  onExecuteVerifiedRelease={() =>
+                    onExecuteVerifiedRelease(milestone)
+                  }
                   onExecuteReclaim={() => onExecuteReclaim(milestone)}
                 />
               ))}

@@ -36,6 +36,14 @@ export const env = {
    * Never use a mainnet key. Leave unset to keep money moves UI-reported only.
    */
   escrowOperatorPrivateKey: process.env.ESCROW_OPERATOR_PRIVATE_KEY ?? '',
+  /**
+   * Optional independent verifier signing key (EIP-712 MilestoneVerificationAttestation).
+   * Keep outside source control; never commit real keys.
+   */
+  verifierPrivateKey: process.env.VERIFIER_PRIVATE_KEY ?? '',
+  verifierAttestationTtlSeconds: Number(
+    process.env.VERIFIER_ATTESTATION_TTL_SECONDS ?? 86_400,
+  ),
   /** ERC-20 decimals for amount mapping (app cents → token base). */
   tokenDecimals: Number(process.env.TOKEN_DECIMALS ?? 6),
 

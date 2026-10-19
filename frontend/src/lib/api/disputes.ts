@@ -1,5 +1,12 @@
 import { apiBlobRequest, apiFormRequest, apiRequest } from './client'
 import type { Milestone } from './milestones'
+import type {
+  VerificationAttestation,
+  VerificationCriteria,
+  VerificationMethod,
+  VerificationRun,
+  VerificationStatus,
+} from './verification'
 
 export type DisputeStatus = 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED'
 
@@ -38,6 +45,17 @@ export type DisputeEvidence = {
   createdAt: string
 }
 
+export type DisputeVerificationContext = {
+  milestoneTitle: string
+  verificationMethod: VerificationMethod
+  verificationStatus: VerificationStatus
+  verificationCriteria: VerificationCriteria
+  frozenCriteriaHash: string | null
+  frozenAgreementVersion: number | null
+  latestVerificationRun: VerificationRun | null
+  latestAttestation: VerificationAttestation | null
+}
+
 export type Dispute = {
   id: string
   projectId: string
@@ -59,6 +77,12 @@ export type Dispute = {
   resolvedBy?: string | null
   resolvedAt?: string | null
   resolutionProposal?: ResolutionProposal | null
+  disputedCriteriaRefs?: string[]
+  evidenceSubmissionId?: string | null
+  verificationRunId?: string | null
+  escalationDueAt?: string | null
+  escalatedAt?: string | null
+  verificationContext?: DisputeVerificationContext | null
   createdAt: string
   updatedAt: string
   fundsMovedByDecision: boolean
@@ -69,6 +93,9 @@ export type OpenDisputeInput = {
   reason: string
   claimSummary?: string | null
   openPaymentId?: string | null
+  disputedCriteriaRefs?: string[]
+  evidenceSubmissionId?: string | null
+  verificationRunId?: string | null
 }
 
 export type DisputeDecisionInput = {

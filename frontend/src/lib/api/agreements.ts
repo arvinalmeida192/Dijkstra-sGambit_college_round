@@ -1,5 +1,9 @@
 import { apiRequest } from './client'
 import type { UserRole } from '../roles'
+import type {
+  VerificationCriteria,
+  VerificationMethod,
+} from './verification'
 
 export type AgreementStatus =
   | 'PROPOSED'
@@ -11,7 +15,12 @@ export type AgreementMilestoneTerms = {
   title: string
   description?: string
   deliverables?: string
+  deliverableDescription?: string
   acceptanceCriteria?: string
+  verificationMethod?: VerificationMethod
+  verificationCriteria?: VerificationCriteria
+  challengeWindowHours?: number
+  disputeEscalationDays?: number
   amount: number
   dueDate?: string
   reviewWindowDays?: number

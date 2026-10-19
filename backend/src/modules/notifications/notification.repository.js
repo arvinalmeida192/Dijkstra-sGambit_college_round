@@ -133,7 +133,47 @@ export async function listMilestonesForReviewScan() {
      FROM milestones m
      JOIN projects p ON p.id = m.project_id
      WHERE m.status IN ('SUBMITTED', 'IN_REVIEW')
+       AND COALESCE(m.verification_status, 'NONE') <> 'CHALLENGE_WINDOW'
        AND p.status = 'ACTIVE'`,
+  )
+  return rows
+}
+
+/** Active milestones in objective verification challenge window. */
+export async function listMilestonesForChallengeWindowScan() {
+  const { rows } = await query(
+    `SELECT m.*,
+            p.client_id,
+            p.freelancer_id,
+            p.title AS project_title
+     FROM milestones m
+     JOIN projects p ON p.id = m.project_id
+     WHERE m.verification_status = 'CHALLENGE_WINDOW'
+       AND m.challenge_due_at IS NOT NULL
+       AND m.status NOT IN ('DISPUTED', 'CANCELLED')
+       AND p.status = 'ACTIVE'`,
+  )
+  return rows
+}
+
+/** Open disputes with an escalation deadline. */
+export async function listDisputesForEscalationScan() {
+  const { rows } = await query(
+    `SELECT d.*,
+            m.title AS milestone_title,
+            p.client_id,
+            p.freelancer_id,
+            COALESCE(
+              d.arbitrator_id,
+              (SELECT u.id FROM users u WHERE u.role = 'ARBITRATOR' ORDER BY u.created_at ASC LIMIT 1)
+            ) AS project_arbitrator_id,
+            p.title AS project_title
+     FROM disputes d
+     JOIN milestones m ON m.id = d.milestone_id
+     JOIN projects p ON p.id = d.project_id
+     WHERE d.status = 'OPEN'
+       AND d.escalation_due_at IS NOT NULL
+       AND d.escalated_at IS NULL`,
   )
   return rows
 }

@@ -14,6 +14,7 @@ import { paymentsRouter } from './modules/payments/payment.routes.js'
 import { disputesRouter } from './modules/disputes/dispute.routes.js'
 import { notificationsRouter } from './modules/notifications/notification.routes.js'
 import { fundingRouter } from './modules/funding/funding.routes.js'
+import { verificationRouter } from './modules/verification/verification.routes.js'
 import { webhook as fundingWebhook } from './modules/funding/funding.controller.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
@@ -51,6 +52,7 @@ export function createApp() {
   app.use('/api/v1/disputes', disputesRouter)
   app.use('/api/v1/funding', fundingRouter)
   app.use('/api/v1/notifications', notificationsRouter)
+  app.use('/api/v1', verificationRouter)
 
   app.use(notFoundHandler)
   app.use(errorHandler)

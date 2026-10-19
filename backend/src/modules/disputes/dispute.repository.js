@@ -39,17 +39,46 @@ export async function insertDispute(
     openedBy,
     reason,
     claimSummary,
+    disputedCriteriaRefs = [],
+    evidenceSubmissionId = null,
+    verificationRunId = null,
+    escalationDueAt = null,
   },
   client,
 ) {
   const { rows } = await db(client).query(
     `INSERT INTO disputes (
-       project_id, milestone_id, opened_by, reason, claim_summary, status
-     ) VALUES ($1, $2, $3, $4, $5, 'OPEN')
+       project_id, milestone_id, opened_by, reason, claim_summary, status,
+       disputed_criteria_refs, evidence_submission_id, verification_run_id, escalation_due_at
+     ) VALUES ($1, $2, $3, $4, $5, 'OPEN', $6::jsonb, $7, $8, $9)
      RETURNING *`,
-    [projectId, milestoneId, openedBy, reason, claimSummary ?? null],
+    [
+      projectId,
+      milestoneId,
+      openedBy,
+      reason,
+      claimSummary ?? null,
+      JSON.stringify(Array.isArray(disputedCriteriaRefs) ? disputedCriteriaRefs : []),
+      evidenceSubmissionId ?? null,
+      verificationRunId ?? null,
+      escalationDueAt ?? null,
+    ],
   )
   return rows[0]
+}
+
+export async function escalateDispute(id, arbitratorId = null, client) {
+  const { rows } = await db(client).query(
+    `UPDATE disputes
+     SET status = 'UNDER_REVIEW',
+         arbitrator_id = COALESCE(arbitrator_id, $2),
+         escalated_at = COALESCE(escalated_at, NOW()),
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'OPEN'
+     RETURNING *`,
+    [id, arbitratorId],
+  )
+  return rows[0] ?? null
 }
 
 export async function claimDispute(id, arbitratorId, client) {
@@ -58,7 +87,7 @@ export async function claimDispute(id, arbitratorId, client) {
      SET status = 'UNDER_REVIEW',
          arbitrator_id = $2,
          updated_at = NOW()
-     WHERE id = $1 AND status = 'OPEN'
+     WHERE id = $1 AND status IN ('OPEN', 'UNDER_REVIEW')
      RETURNING *`,
     [id, arbitratorId],
   )
@@ -263,6 +292,16 @@ export function toPublicDispute(row, evidence = undefined) {
           ? JSON.parse(row.resolution_proposal)
           : row.resolution_proposal
         : null,
+    disputedCriteriaRefs:
+      row.disputed_criteria_refs != null
+        ? typeof row.disputed_criteria_refs === 'string'
+          ? JSON.parse(row.disputed_criteria_refs)
+          : row.disputed_criteria_refs
+        : [],
+    evidenceSubmissionId: row.evidence_submission_id ?? null,
+    verificationRunId: row.verification_run_id ?? null,
+    escalationDueAt: row.escalation_due_at ?? null,
+    escalatedAt: row.escalated_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     /**

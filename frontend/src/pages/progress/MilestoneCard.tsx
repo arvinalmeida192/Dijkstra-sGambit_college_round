@@ -64,6 +64,7 @@ type MilestoneCardProps = {
   ) => Promise<void>
   onCancelAndReclaim: (reason?: string) => Promise<void>
   onExecuteAutoRelease: () => Promise<void>
+  onExecuteVerifiedRelease?: () => Promise<void>
   onExecuteReclaim: () => Promise<void>
 }
 
@@ -102,7 +103,7 @@ function countdownLabel(iso: string | null | undefined) {
   const due = new Date(iso).getTime()
   if (Number.isNaN(due)) return null
   const ms = due - Date.now()
-  if (ms <= 0) return 'Expired — auto-approval eligible'
+  if (ms <= 0) return 'Expired — release eligible'
   const hours = Math.ceil(ms / (1000 * 60 * 60))
   if (hours < 48) return `${hours}h remaining`
   const days = Math.ceil(hours / 24)
@@ -129,6 +130,7 @@ export function MilestoneCard({
   onRespondExtension,
   onCancelAndReclaim,
   onExecuteAutoRelease,
+  onExecuteVerifiedRelease,
   onExecuteReclaim,
 }: MilestoneCardProps) {
   const [showSubmitForm, setShowSubmitForm] = useState(false)
@@ -155,11 +157,18 @@ export function MilestoneCard({
     !projectClosed &&
     canSubmitDeliverable(milestone.status)
 
+  const isObjectiveVerified =
+    milestone.verificationStatus === 'CHALLENGE_WINDOW' ||
+    milestone.verificationStatus === 'VERIFIED_ELIGIBLE' ||
+    milestone.verificationStatus === 'VERIFIED_RELEASE_ELIGIBLE' ||
+    milestone.verificationStatus === 'PASSED'
+
   const showReview =
     isClient &&
     !projectClosed &&
     latest &&
-    canReviewSubmission(milestone.status)
+    canReviewSubmission(milestone.status) &&
+    !isObjectiveVerified
 
   const rawActions = filterActionsForActor(
     milestone.status,
@@ -175,6 +184,9 @@ export function MilestoneCard({
         toStatus === 'APPROVED' ||
         toStatus === 'REVISION_REQUESTED')
     ) {
+      return false
+    }
+    if (isObjectiveVerified && toStatus === 'REVISION_REQUESTED') {
       return false
     }
     return true
@@ -196,9 +208,11 @@ export function MilestoneCard({
     (milestone.status === 'OVERDUE' ||
       milestone.escalationStatus === 'ACTION_ELIGIBLE') &&
     milestone.status !== 'DISPUTED' &&
-    submissions.length === 0
+    submissions.length === 0 &&
+    !isObjectiveVerified
 
   const reviewCountdown = countdownLabel(milestone.reviewDueAt)
+  const challengeCountdown = countdownLabel(milestone.challengeDueAt)
   const protectionNotice =
     milestone.status === 'OVERDUE'
       ? 'Deadline and grace period expired with no submission. Client may cancel and reclaim unreleased funds unless a dispute is open.'
@@ -206,7 +220,13 @@ export function MilestoneCard({
         ? 'Review window expired without client action. Milestone was auto-approved; funds may be released on-chain.'
         : milestone.status === 'DISPUTED'
           ? 'An open dispute freezes release, auto-release, and cancellation until resolved.'
-          : null
+          : milestone.verificationStatus === 'CHALLENGE_WINDOW'
+            ? `Objective verification PASSED and signed EIP-712 attestation issued. Bounded challenge window active (${challengeCountdown ?? 'active'}). Client cannot arbitrarily request revisions; once the challenge window expires without an evidence-backed dispute, smart-contract verified release unlocks.`
+            : milestone.verificationStatus === 'VERIFIED_ELIGIBLE' ||
+                milestone.verificationStatus === 'VERIFIED_RELEASE_ELIGIBLE' ||
+                milestone.verificationStatus === 'PASSED'
+              ? 'Objective verification PASSED and signed EIP-712 attestation verified. Smart-contract release is eligible without requiring client approval.'
+              : null
 
   return (
     <Panel tone="surface" shadow="sm" className="space-y-4">
@@ -217,6 +237,33 @@ export function MilestoneCard({
               {milestone.title}
             </h3>
             <MilestoneStatusBadge status={milestone.status} />
+            {milestone.verificationMethod ? (
+              <Badge
+                tone={
+                  milestone.verificationMethod === 'HUMAN_REVIEWED'
+                    ? 'neutral'
+                    : 'accent'
+                }
+              >
+                {milestone.verificationMethod.replace(/_/g, ' ')}
+              </Badge>
+            ) : null}
+            {milestone.verificationStatus &&
+            milestone.verificationStatus !== 'UNVERIFIED' ? (
+              <Badge
+                tone={
+                  milestone.verificationStatus === 'FAILED'
+                    ? 'danger'
+                    : milestone.verificationStatus === 'NEEDS_HUMAN_REVIEW' ||
+                        milestone.verificationStatus === 'CHALLENGE_WINDOW'
+                      ? 'warning'
+                      : 'success'
+                }
+                dot
+              >
+                {milestone.verificationStatus.replace(/_/g, ' ')}
+              </Badge>
+            ) : null}
             {milestone.escalationStatus &&
             milestone.escalationStatus !== 'NONE' ? (
               <Badge tone="warning" dot>
@@ -244,6 +291,15 @@ export function MilestoneCard({
             <span>Review {milestone.reviewWindowDays ?? 7}d</span>
             <span>Grace {milestone.gracePeriodDays ?? 3}d</span>
             <span>Max revisions {milestone.maxRevisions ?? 3}</span>
+            {milestone.challengeWindowHours != null ? (
+              <span>Challenge {milestone.challengeWindowHours}h</span>
+            ) : null}
+            {milestone.frozenCriteriaHash ? (
+              <span title={milestone.frozenCriteriaHash}>
+                Frozen Criteria v{milestone.frozenAgreementVersion ?? 1}:{' '}
+                {milestone.frozenCriteriaHash.slice(0, 10)}…
+              </span>
+            ) : null}
             {submissions.length > 0 ? (
               <span>{submissions.length} revision(s)</span>
             ) : null}
@@ -511,6 +567,19 @@ export function MilestoneCard({
             onClick={() => void onExecuteAutoRelease()}
           >
             Execute auto-release (local)
+          </Button>
+        ) : null}
+        {onExecuteVerifiedRelease &&
+        isObjectiveVerified &&
+        milestone.status !== 'DISPUTED' &&
+        milestone.status !== 'CANCELLED' ? (
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={busy}
+            onClick={() => void onExecuteVerifiedRelease()}
+          >
+            Execute verified release (smart contract)
           </Button>
         ) : null}
         {isClient && milestone.status === 'CANCELLED' ? (

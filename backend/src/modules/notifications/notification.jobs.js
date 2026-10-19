@@ -4,6 +4,8 @@ import {
   hasOpenDispute,
   insertJobRun,
   insertNotificationIgnoreConflict,
+  listDisputesForEscalationScan,
+  listMilestonesForChallengeWindowScan,
   listMilestonesForDeadlineScan,
   listMilestonesForInactivityScan,
   listMilestonesForReviewScan,
@@ -11,6 +13,8 @@ import {
 import { applyStatusPatch } from '../milestones/milestone.repository.js'
 import { trySystemAutoRelease } from '../milestones/milestone.protection.js'
 import { tryAutoReleaseMilestoneFund } from '../funding/funding.service.js'
+import { executeVerifiedMilestoneRelease } from '../verification/verification.service.js'
+import { escalateDispute } from '../disputes/dispute.repository.js'
 import {
   insertAuditLog,
   listSubmissionsForMilestone,
@@ -50,8 +54,8 @@ function recipientIds(row) {
 }
 
 /**
- * Deterministic deadline + review expiry + inactivity scan. Idempotent via unique subject_key.
- * Independent of AI judgment.
+ * Deterministic deadline + review expiry + inactivity + challenge window + dispute escalation scan.
+ * Idempotent via unique subject_key. Independent of AI judgment.
  */
 export async function runNotificationJobs({
   now = new Date(),
@@ -257,7 +261,80 @@ export async function runNotificationJobs({
     }
   }
 
-  // 3. Inactivity Scan
+  // 3. Objective Verification Challenge Window Expiry Scan
+  const challengeRows = await listMilestonesForChallengeWindowScan()
+  for (const row of challengeRows) {
+    if (row.status === 'DISPUTED') continue
+    const isDisputed = await hasOpenDispute(row.id)
+    if (isDisputed) continue
+
+    const challengeDueAt = row.challenge_due_at ? new Date(row.challenge_due_at) : null
+    if (!challengeDueAt) continue
+
+    if (challengeDueAt.getTime() <= now.getTime()) {
+      await executeVerifiedMilestoneRelease(null, row.id).catch(() => null)
+
+      const subjectKey = `verification:challenge_expired:${row.id}`
+      for (const userId of recipientIds(row)) {
+        const inserted = await insertNotificationIgnoreConflict({
+          userId,
+          projectId: row.project_id,
+          milestoneId: row.id,
+          kind: 'AUTO_APPROVED',
+          subjectKey,
+          title: `Verified Release Eligible: ${row.title}`,
+          body: `The challenge window for verified milestone "${row.title}" has expired without dispute. Smart-contract verified release is now unlocked.`,
+        })
+        if (inserted) created += 1
+        else skipped += 1
+      }
+    }
+  }
+
+  // 4. Dispute Escalation Deadline Scan
+  const disputeRows = await listDisputesForEscalationScan()
+  for (const row of disputeRows) {
+    const escalationDueAt = row.escalation_due_at ? new Date(row.escalation_due_at) : null
+    if (!escalationDueAt) continue
+
+    if (escalationDueAt.getTime() <= now.getTime()) {
+      const updated = await escalateDispute(row.id, row.project_arbitrator_id ?? null)
+      if (!updated) continue
+
+      await insertAuditLog({
+        actorId: null,
+        projectId: row.project_id,
+        milestoneId: row.milestone_id,
+        action: 'DISPUTE_ESCALATED',
+        metadata: {
+          disputeId: row.id,
+          escalationDueAt: escalationDueAt.toISOString(),
+          escalatedAt: now.toISOString(),
+          arbitratorId: row.project_arbitrator_id ?? null,
+        },
+      })
+
+      const targets = new Set(recipientIds(row))
+      if (row.project_arbitrator_id) targets.add(row.project_arbitrator_id)
+
+      const subjectKey = `dispute:escalated:${row.id}`
+      for (const userId of targets) {
+        const inserted = await insertNotificationIgnoreConflict({
+          userId,
+          projectId: row.project_id,
+          milestoneId: row.milestone_id,
+          kind: 'DEADLINE_PASSED',
+          subjectKey,
+          title: `Dispute Escalated to Arbitration: ${row.milestone_title}`,
+          body: `Open dispute on milestone "${row.milestone_title}" passed its mutual-resolution window and has been escalated for formal arbitration review.`,
+        })
+        if (inserted) created += 1
+        else skipped += 1
+      }
+    }
+  }
+
+  // 5. Inactivity Scan
   const inactiveRows = await listMilestonesForInactivityScan({ inactivityDays })
   for (const row of inactiveRows) {
     const subjectKey = `inactivity:${row.id}:${dayKey}`

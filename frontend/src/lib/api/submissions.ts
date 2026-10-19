@@ -1,5 +1,9 @@
 import { apiBlobRequest, apiFormRequest, apiRequest } from './client'
 import type { Milestone } from './milestones'
+import type {
+  VerificationAttestation,
+  VerificationRun,
+} from './verification'
 
 export type ReviewDecision =
   | 'START_REVIEW'
@@ -34,6 +38,9 @@ export type Submission = {
   submittedAt: string
   createdAt: string
   reviews?: SubmissionReview[]
+  verificationRuns?: VerificationRun[]
+  latestVerificationRun?: VerificationRun | null
+  latestAttestation?: VerificationAttestation | null
 }
 
 export type SubmissionInput = {
@@ -51,6 +58,8 @@ export function listSubmissions(token: string, milestoneId: string) {
   return apiRequest<{
     milestone: Milestone
     submissions: Submission[]
+    latestVerificationRun?: VerificationRun | null
+    latestAttestation?: VerificationAttestation | null
   }>(`/api/v1/milestones/${milestoneId}/submissions`, {
     ...auth(token),
     method: 'GET',
@@ -83,28 +92,32 @@ export function createSubmission(
     }
     if (input.agreementId) form.append('agreementId', input.agreementId)
 
-    return apiFormRequest<{ submission: Submission; milestone: Milestone }>(
-      `/api/v1/milestones/${milestoneId}/submissions`,
-      {
-        ...auth(token),
-        method: 'POST',
-        formData: form,
-      },
-    )
-  }
-
-  return apiRequest<{ submission: Submission; milestone: Milestone }>(
-    `/api/v1/milestones/${milestoneId}/submissions`,
-    {
+    return apiFormRequest<{
+      submission: Submission
+      milestone: Milestone
+      verificationRun?: VerificationRun | null
+      attestation?: VerificationAttestation | null
+    }>(`/api/v1/milestones/${milestoneId}/submissions`, {
       ...auth(token),
       method: 'POST',
-      body: {
-        notes: input.notes?.trim() || null,
-        externalUrl: input.externalUrl?.trim() || null,
-        agreementId: input.agreementId ?? null,
-      },
+      formData: form,
+    })
+  }
+
+  return apiRequest<{
+    submission: Submission
+    milestone: Milestone
+    verificationRun?: VerificationRun | null
+    attestation?: VerificationAttestation | null
+  }>(`/api/v1/milestones/${milestoneId}/submissions`, {
+    ...auth(token),
+    method: 'POST',
+    body: {
+      notes: input.notes?.trim() || null,
+      externalUrl: input.externalUrl?.trim() || null,
+      agreementId: input.agreementId ?? null,
     },
-  )
+  })
 }
 
 export function reviewSubmission(

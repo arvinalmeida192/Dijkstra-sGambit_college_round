@@ -19,11 +19,31 @@ export const createMilestoneSchema = z.object({
     .trim()
     .min(1, 'Deliverables are required.')
     .max(5000),
+  deliverableDescription: z.string().trim().max(5000).optional().nullable(),
   acceptanceCriteria: z
     .string()
     .trim()
     .min(1, 'Acceptance criteria are required.')
     .max(5000),
+  verificationMethod: z
+    .enum(['AUTOMATED_CHECK', 'EVIDENCE_INTEGRITY_CHECK', 'HUMAN_REVIEWED'])
+    .optional()
+    .default('HUMAN_REVIEWED'),
+  verificationCriteria: z.record(z.string(), z.any()).optional().default({}),
+  challengeWindowHours: z
+    .number()
+    .int()
+    .min(0)
+    .max(720)
+    .optional()
+    .default(48),
+  disputeEscalationDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(90)
+    .optional()
+    .default(7),
   amount: z.number().int().nonnegative(),
   dueDate: dateOnly.optional().nullable(),
   reviewWindowDays: z
@@ -66,12 +86,19 @@ export const updateMilestoneSchema = z
       .min(1, 'Deliverables are required.')
       .max(5000)
       .optional(),
+    deliverableDescription: z.string().trim().max(5000).optional().nullable(),
     acceptanceCriteria: z
       .string()
       .trim()
       .min(1, 'Acceptance criteria are required.')
       .max(5000)
       .optional(),
+    verificationMethod: z
+      .enum(['AUTOMATED_CHECK', 'EVIDENCE_INTEGRITY_CHECK', 'HUMAN_REVIEWED'])
+      .optional(),
+    verificationCriteria: z.record(z.string(), z.any()).optional(),
+    challengeWindowHours: z.number().int().min(0).max(720).optional(),
+    disputeEscalationDays: z.number().int().min(1).max(90).optional(),
     amount: z.number().int().nonnegative().optional(),
     dueDate: dateOnly.optional().nullable(),
     reviewWindowDays: z

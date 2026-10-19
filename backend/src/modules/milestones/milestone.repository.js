@@ -7,7 +7,15 @@ export async function insertMilestone(
     title,
     description = null,
     deliverables,
+    deliverableDescription = null,
     acceptanceCriteria = null,
+    verificationMethod = 'HUMAN_REVIEWED',
+    verificationCriteria = {},
+    frozenCriteriaHash = null,
+    frozenAgreementVersion = null,
+    verificationStatus = 'UNVERIFIED',
+    challengeWindowHours = 48,
+    disputeEscalationDays = 7,
     amount,
     dueDate = null,
     reviewWindowDays = 7,
@@ -21,17 +29,35 @@ export async function insertMilestone(
   client,
 ) {
   const runner = client ?? { query }
-  const effectiveDeliverables = deliverables ?? description ?? ''
+  const effectiveDeliverables =
+    deliverables ?? deliverableDescription ?? description ?? ''
+  const effectiveDeliverableDescription =
+    deliverableDescription ?? deliverables ?? description ?? ''
   const effectiveCriteria =
     acceptanceCriteria ?? description ?? deliverables ?? 'Deliverable accepted'
   const effectiveDescription = description ?? deliverables ?? ''
+  const effectiveMethod = verificationMethod ?? 'HUMAN_REVIEWED'
+  const effectiveVerificationCriteria =
+    verificationCriteria && typeof verificationCriteria === 'object'
+      ? verificationCriteria
+      : {}
 
   const { rows } = await runner.query(
     `INSERT INTO milestones (
-       project_id, agreement_id, title, description, deliverables, acceptance_criteria,
+       project_id, agreement_id, title, description, deliverables, deliverable_description,
+       acceptance_criteria, verification_method, verification_criteria,
+       frozen_criteria_hash, frozen_agreement_version, verification_status,
+       challenge_window_hours, dispute_escalation_days,
        amount, due_date, review_window_days, grace_period_days, max_revisions,
        escalation_status, sort_order, created_by, status
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8, $9::jsonb,
+       $10, $11, $12,
+       $13, $14,
+       $15, $16, $17, $18, $19,
+       $20, $21, $22, $23
+     )
      RETURNING *`,
     [
       projectId,
@@ -39,7 +65,15 @@ export async function insertMilestone(
       title,
       effectiveDescription,
       effectiveDeliverables,
+      effectiveDeliverableDescription,
       effectiveCriteria,
+      effectiveMethod,
+      JSON.stringify(effectiveVerificationCriteria),
+      frozenCriteriaHash,
+      frozenAgreementVersion,
+      verificationStatus ?? 'UNVERIFIED',
+      challengeWindowHours ?? 48,
+      disputeEscalationDays ?? 7,
       amount,
       dueDate,
       reviewWindowDays ?? 7,
@@ -54,13 +88,15 @@ export async function insertMilestone(
   return rows[0]
 }
 
-export async function findMilestoneById(id) {
-  const { rows } = await query(`SELECT * FROM milestones WHERE id = $1`, [id])
+export async function findMilestoneById(id, client) {
+  const runner = client ?? { query }
+  const { rows } = await runner.query(`SELECT * FROM milestones WHERE id = $1`, [id])
   return rows[0] ?? null
 }
 
-export async function listMilestonesForProject(projectId) {
-  const { rows } = await query(
+export async function listMilestonesForProject(projectId, client) {
+  const runner = client ?? { query }
+  const { rows } = await runner.query(
     `SELECT * FROM milestones
      WHERE project_id = $1
      ORDER BY sort_order ASC, created_at ASC`,
@@ -69,7 +105,8 @@ export async function listMilestonesForProject(projectId) {
   return rows
 }
 
-export async function updateMilestoneFields(id, fields) {
+export async function updateMilestoneFields(id, fields, client) {
+  const runner = client ?? { query }
   const sets = []
   const values = []
   let i = 1
@@ -78,7 +115,18 @@ export async function updateMilestoneFields(id, fields) {
     title: 'title',
     description: 'description',
     deliverables: 'deliverables',
+    deliverableDescription: 'deliverable_description',
     acceptanceCriteria: 'acceptance_criteria',
+    verificationMethod: 'verification_method',
+    verificationCriteria: 'verification_criteria',
+    frozenCriteriaHash: 'frozen_criteria_hash',
+    frozenAgreementVersion: 'frozen_agreement_version',
+    verificationStatus: 'verification_status',
+    challengeWindowHours: 'challenge_window_hours',
+    challengeDueAt: 'challenge_due_at',
+    disputeEscalationDays: 'dispute_escalation_days',
+    latestVerificationRunId: 'latest_verification_run_id',
+    latestAttestationId: 'latest_attestation_id',
     amount: 'amount',
     dueDate: 'due_date',
     reviewWindowDays: 'review_window_days',
@@ -90,19 +138,24 @@ export async function updateMilestoneFields(id, fields) {
 
   for (const [key, column] of Object.entries(map)) {
     if (Object.prototype.hasOwnProperty.call(fields, key)) {
-      sets.push(`${column} = $${i++}`)
-      values.push(fields[key])
+      if (key === 'verificationCriteria') {
+        sets.push(`${column} = $${i++}::jsonb`)
+        values.push(JSON.stringify(fields[key] ?? {}))
+      } else {
+        sets.push(`${column} = $${i++}`)
+        values.push(fields[key])
+      }
     }
   }
 
   if (sets.length === 0) {
-    return findMilestoneById(id)
+    return findMilestoneById(id, client)
   }
 
   sets.push('updated_at = NOW()')
   values.push(id)
 
-  const { rows } = await query(
+  const { rows } = await runner.query(
     `UPDATE milestones SET ${sets.join(', ')}
      WHERE id = $${i}
      RETURNING *`,
@@ -115,7 +168,8 @@ export async function updateMilestoneFields(id, fields) {
  * Apply a milestone patch. Status is optional so escalation-only updates are safe.
  * Pass explicit null to clear nullable columns.
  */
-export async function applyStatusPatch(id, patch) {
+export async function applyStatusPatch(id, patch, client) {
+  const runner = client ?? { query }
   const sets = ['updated_at = NOW()']
   const values = [id]
   let i = 2
@@ -152,12 +206,28 @@ export async function applyStatusPatch(id, patch) {
     sets.push(`due_date = $${i++}`)
     values.push(patch.dueDate)
   }
-
-  if (sets.length === 1) {
-    return findMilestoneById(id)
+  if (Object.prototype.hasOwnProperty.call(patch, 'verificationStatus')) {
+    sets.push(`verification_status = $${i++}`)
+    values.push(patch.verificationStatus)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'challengeDueAt')) {
+    sets.push(`challenge_due_at = $${i++}`)
+    values.push(patch.challengeDueAt)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'latestVerificationRunId')) {
+    sets.push(`latest_verification_run_id = $${i++}`)
+    values.push(patch.latestVerificationRunId)
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'latestAttestationId')) {
+    sets.push(`latest_attestation_id = $${i++}`)
+    values.push(patch.latestAttestationId)
   }
 
-  const { rows } = await query(
+  if (sets.length === 1) {
+    return findMilestoneById(id, client)
+  }
+
+  const { rows } = await runner.query(
     `UPDATE milestones SET ${sets.join(', ')}
      WHERE id = $1
      RETURNING *`,
@@ -187,6 +257,12 @@ export function toPublicMilestone(row) {
   if (!row) return null
 
   const dueDate = formatDateOnly(row.due_date)
+  const verificationCriteria =
+    row.verification_criteria && typeof row.verification_criteria === 'object'
+      ? row.verification_criteria
+      : typeof row.verification_criteria === 'string'
+        ? JSON.parse(row.verification_criteria)
+        : {}
 
   return {
     id: row.id,
@@ -195,7 +271,28 @@ export function toPublicMilestone(row) {
     title: row.title,
     description: row.description ?? row.deliverables ?? '',
     deliverables: row.deliverables,
+    deliverableDescription:
+      row.deliverable_description ?? row.deliverables ?? row.description ?? '',
     acceptanceCriteria: row.acceptance_criteria,
+    verificationMethod: row.verification_method ?? 'HUMAN_REVIEWED',
+    verificationCriteria,
+    frozenCriteriaHash: row.frozen_criteria_hash ?? null,
+    frozenAgreementVersion:
+      row.frozen_agreement_version != null
+        ? Number(row.frozen_agreement_version)
+        : null,
+    verificationStatus: row.verification_status ?? 'UNVERIFIED',
+    challengeWindowHours:
+      row.challenge_window_hours != null
+        ? Number(row.challenge_window_hours)
+        : 48,
+    challengeDueAt: row.challenge_due_at ?? null,
+    disputeEscalationDays:
+      row.dispute_escalation_days != null
+        ? Number(row.dispute_escalation_days)
+        : 7,
+    latestVerificationRunId: row.latest_verification_run_id ?? null,
+    latestAttestationId: row.latest_attestation_id ?? null,
     amount: Number(row.amount),
     dueDate,
     reviewWindowDays: row.review_window_days ?? 7,

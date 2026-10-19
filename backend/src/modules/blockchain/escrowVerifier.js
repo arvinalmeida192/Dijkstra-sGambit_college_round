@@ -8,6 +8,8 @@ const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/
 
 const EVENT_STATUS = {
   MilestoneFunded: 'CONFIRMED',
+  MilestoneVerified: 'CONFIRMED',
+  VerifiedMilestoneReleased: 'RELEASED',
   MilestoneReleased: 'RELEASED',
   MilestoneAutoReleased: 'RELEASED',
   MilestoneRefunded: 'REFUNDED',
@@ -184,11 +186,14 @@ export function createEscrowVerifier({
     const priority = [
       'DisputeResolved',
       'DisputeOpened',
+      'VerifiedMilestoneReleased',
       'MilestoneReleased',
       'MilestoneAutoReleased',
       'MilestoneRefunded',
       'MilestoneReclaimed',
+      'MilestoneVerified',
       'MilestoneFunded',
+      'MilestoneVerificationConfigured',
       'MilestoneProtectionConfigured',
       'MilestoneAdded',
       'AgreementCreated',
@@ -210,6 +215,7 @@ export function createEscrowVerifier({
 
     if (
       primary.name === 'MilestoneFunded' ||
+      primary.name === 'VerifiedMilestoneReleased' ||
       primary.name === 'MilestoneReleased' ||
       primary.name === 'MilestoneAutoReleased' ||
       primary.name === 'MilestoneRefunded' ||
@@ -218,6 +224,19 @@ export function createEscrowVerifier({
       onChainAgreementId = primary.args.agreementId.toString()
       onChainMilestoneId = primary.args.milestoneId.toString()
       amountTokenBase = primary.args.amount.toString()
+      if (primary.name === 'VerifiedMilestoneReleased') {
+        reconciliation.submissionHash = String(primary.args.submissionHash)
+        reconciliation.attestationNonce = String(primary.args.nonce)
+      }
+    } else if (primary.name === 'MilestoneVerified') {
+      onChainAgreementId = primary.args.agreementId.toString()
+      onChainMilestoneId = primary.args.milestoneId.toString()
+      reconciliation.submissionHash = String(primary.args.submissionHash)
+      reconciliation.criteriaHash = String(primary.args.criteriaHash)
+      reconciliation.agreementVersion = primary.args.agreementVersion.toString()
+      reconciliation.verifier = String(primary.args.verifier).toLowerCase()
+      reconciliation.attestationNonce = String(primary.args.nonce)
+      reconciliation.challengeDeadline = primary.args.challengeDeadline.toString()
     } else if (primary.name === 'DisputeOpened') {
       onChainAgreementId = primary.args.agreementId.toString()
       onChainMilestoneId = primary.args.milestoneId.toString()

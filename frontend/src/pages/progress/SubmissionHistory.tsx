@@ -125,6 +125,112 @@ export function SubmissionHistory({
               </p>
             )}
 
+            {submission.latestVerificationRun ? (
+              <div className="border-t-2 border-dark/10 pt-2 space-y-2 bg-neutral-50/80 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/60">
+                      Independent Verification
+                    </span>
+                    <Badge
+                      tone={
+                        submission.latestVerificationRun.outcome === 'PASSED'
+                          ? 'success'
+                          : submission.latestVerificationRun.outcome ===
+                              'FAILED'
+                            ? 'danger'
+                            : 'warning'
+                      }
+                      dot
+                    >
+                      {submission.latestVerificationRun.outcome.replace(
+                        /_/g,
+                        ' ',
+                      )}
+                    </Badge>
+                    <span className="font-mono text-[10px] text-dark/50">
+                      {submission.latestVerificationRun.verificationMethod.replace(
+                        /_/g,
+                        ' ',
+                      )}{' '}
+                      · v{submission.latestVerificationRun.agreementVersion}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[10px] text-dark/50">
+                    {submission.latestVerificationRun.durationMs}ms
+                  </span>
+                </div>
+
+                <p className="font-body text-xs text-dark/80">
+                  {submission.latestVerificationRun.summary}
+                </p>
+
+                {submission.latestVerificationRun.checksExecuted.length > 0 ? (
+                  <ul className="space-y-1 font-mono text-[11px]">
+                    {submission.latestVerificationRun.checksExecuted.map(
+                      (chk) => (
+                        <li
+                          key={chk.id}
+                          className="flex items-start gap-2 text-dark/80"
+                        >
+                          <span
+                            className={
+                              chk.passed
+                                ? 'text-status-success font-bold'
+                                : 'text-status-danger font-bold'
+                            }
+                          >
+                            {chk.passed ? '✓' : '✗'}
+                          </span>
+                          <div>
+                            <span className="font-bold">{chk.name}:</span>{' '}
+                            <span>{chk.detail}</span>
+                          </div>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : null}
+
+                {submission.latestAttestation ? (
+                  <div className="border-t border-dark/15 pt-2 space-y-1 font-mono text-[10px] text-dark/70">
+                    <div className="font-bold uppercase text-status-success">
+                      Signed EIP-712 Verification Attestation Issued
+                    </div>
+                    <div>
+                      Verifier Signer:{' '}
+                      <code className="bg-dark/5 px-1">
+                        {shortenHash(
+                          submission.latestAttestation.verifierAddress,
+                        )}
+                      </code>{' '}
+                      · Chain {submission.latestAttestation.chainId}
+                    </div>
+                    <div>
+                      Criteria Hash:{' '}
+                      <code className="bg-dark/5 px-1">
+                        {shortenHash(submission.latestAttestation.criteriaHash)}
+                      </code>{' '}
+                      · Artifact Hash:{' '}
+                      <code className="bg-dark/5 px-1">
+                        {shortenHash(submission.latestAttestation.artifactHash)}
+                      </code>
+                    </div>
+                    <div>
+                      Nonce:{' '}
+                      <code className="bg-dark/5 px-1">
+                        {shortenHash(submission.latestAttestation.nonce)}
+                      </code>{' '}
+                      · Signature:{' '}
+                      <code className="bg-dark/5 px-1">
+                        {shortenHash(submission.latestAttestation.signature)}
+                      </code>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {(submission.reviews?.length ?? 0) > 0 ? (
               <ul className="space-y-2 border-t border-dark/10 pt-2">
                 {submission.reviews!.map((review) => (

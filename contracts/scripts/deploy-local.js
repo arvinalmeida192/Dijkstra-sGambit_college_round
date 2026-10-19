@@ -7,7 +7,8 @@
 const hre = require('hardhat')
 
 async function main() {
-  const [deployer, client, freelancer, arbitrator] = await hre.ethers.getSigners()
+  const [deployer, client, freelancer, arbitrator, operator, verifier] =
+    await hre.ethers.getSigners()
 
   const MockERC20 = await hre.ethers.getContractFactory('MockERC20')
   const token = await MockERC20.deploy('Fairwork Test USD', 'tUSD', 6)
@@ -16,6 +17,15 @@ async function main() {
   const MilestoneEscrow = await hre.ethers.getContractFactory('MilestoneEscrow')
   const escrow = await MilestoneEscrow.deploy()
   await escrow.waitForDeployment()
+
+  if (operator) {
+    await (await escrow.connect(deployer).setProtectionOperator(operator.address)).wait()
+    await (await escrow.connect(deployer).setAuthorizedVerifier(operator.address, true)).wait()
+  }
+  if (verifier) {
+    await (await escrow.connect(deployer).setAuthorizedVerifier(verifier.address, true)).wait()
+  }
+  await (await escrow.connect(deployer).setAuthorizedVerifier(deployer.address, true)).wait()
 
   const mintAmount = 1_000_000n * 10n ** 6n
   await (await token.mint(client.address, mintAmount)).wait()
@@ -31,6 +41,8 @@ async function main() {
           client: client.address,
           freelancer: freelancer.address,
           arbitrator: arbitrator.address,
+          operator: operator ? operator.address : deployer.address,
+          verifier: verifier ? verifier.address : deployer.address,
           mockToken: await token.getAddress(),
           milestoneEscrow: await escrow.getAddress(),
         },

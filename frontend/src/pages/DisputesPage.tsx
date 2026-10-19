@@ -585,7 +585,65 @@ export function DisputesPage() {
                         {detail.arbitratorId
                           ? ` · Reviewer ${detail.arbitratorId.slice(0, 8)}`
                           : ''}
+                        {detail.escalationDueAt
+                          ? ` · Escalation due ${formatDate(detail.escalationDueAt)}`
+                          : ''}
+                        {detail.escalatedAt
+                          ? ` · Escalated ${formatDate(detail.escalatedAt)}`
+                          : ''}
                       </p>
+
+                      {detail.verificationContext ? (
+                        <div className="border-2 border-dark/15 bg-neutral-50 p-3 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-dark/60">
+                              Agreed Milestone Verification &amp; Evidence Context
+                            </span>
+                            <Badge tone="accent">
+                              {detail.verificationContext.verificationMethod.replace(
+                                /_/g,
+                                ' ',
+                              )}
+                            </Badge>
+                          </div>
+                          {detail.verificationContext.frozenCriteriaHash ? (
+                            <p className="font-mono text-[11px] text-dark/70 break-all">
+                              Frozen Criteria Hash (v
+                              {detail.verificationContext
+                                .frozenAgreementVersion ?? 1}
+                              ):{' '}
+                              <code className="bg-dark/5 px-1">
+                                {detail.verificationContext.frozenCriteriaHash}
+                              </code>
+                            </p>
+                          ) : null}
+                          {detail.verificationContext.latestVerificationRun ? (
+                            <p className="font-mono text-[11px] text-dark/80">
+                              Latest Verification Outcome:{' '}
+                              <strong>
+                                {
+                                  detail.verificationContext
+                                    .latestVerificationRun.outcome
+                                }
+                              </strong>{' '}
+                              —{' '}
+                              {
+                                detail.verificationContext.latestVerificationRun
+                                  .summary
+                              }
+                            </p>
+                          ) : null}
+                          {(detail.disputedCriteriaRefs?.length ?? 0) > 0 ? (
+                            <div className="font-mono text-[11px] text-dark/70">
+                              <span className="font-bold">
+                                Disputed Criteria:{' '}
+                              </span>
+                              {detail.disputedCriteriaRefs!.join(', ')}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       {detail.resolutionOutcome ? (
                         <div className="space-y-2 border border-dark/20 bg-white p-3">
                           <div className="flex flex-wrap items-center gap-2">

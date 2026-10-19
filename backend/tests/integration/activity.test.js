@@ -137,15 +137,31 @@ describe('Project activity timeline API', () => {
       .set('Authorization', `Bearer ${freelancer.token}`)
     expect(page2.status).toBe(200)
     expect(page2.body.auditLogs).toHaveLength(1)
-    expect(page2.body.auditLogs[0].action).toBe('SUBMISSION_CREATED')
-    expect(page2.body.auditLogs[0].summary).toMatch(/submitted for review/i)
+    expect(page2.body.auditLogs[0].action).toBe(
+      'VERIFICATION_NEEDS_HUMAN_REVIEW',
+    )
+    expect(page2.body.auditLogs[0].summary).toBe(
+      'Verification routed Milestone 2 to human review',
+    )
     expect(page2.body.auditLogs[0].actorRole).toBe('FREELANCER')
+    expect(page2.body.auditLogs[0].category).toBe('verification')
+
+    const page3 = await request(app)
+      .get(`/api/v1/projects/${projectId}/audit-logs?limit=1&offset=2`)
+      .set('Authorization', `Bearer ${freelancer.token}`)
+    expect(page3.status).toBe(200)
+    expect(page3.body.auditLogs).toHaveLength(1)
+    expect(page3.body.auditLogs[0].action).toBe('SUBMISSION_CREATED')
+    expect(page3.body.auditLogs[0].summary).toMatch(/submitted for review/i)
+    expect(page3.body.auditLogs[0].actorRole).toBe('FREELANCER')
 
     const createdTimes = [
       new Date(first.createdAt).getTime(),
       new Date(page2.body.auditLogs[0].createdAt).getTime(),
+      new Date(page3.body.auditLogs[0].createdAt).getTime(),
     ]
     expect(createdTimes[0]).toBeGreaterThanOrEqual(createdTimes[1])
+    expect(createdTimes[1]).toBeGreaterThanOrEqual(createdTimes[2])
   })
 
   it('refuses outsiders and allows empty histories', async () => {
